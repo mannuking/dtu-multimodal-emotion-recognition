@@ -49,7 +49,11 @@ echo "uv version: $(uv --version)"
 
 # Sync deps (idempotent — fast if up-to-date, slow on first run)
 echo "Syncing Python dependencies..."
-uv sync --extra cuda
+uv sync --extra cuda 2>&1 | tee uv_sync.log || {
+    echo "uv sync failed — likely stale venv. Recreating from scratch..."
+    rm -rf .venv
+    uv sync --extra cuda 2>&1 | tee uv_sync.log
+}
 
 # ---- Verify dataset is in place ----
 if [[ ! -f "combined_ser_dataset/metadata.csv" ]]; then
