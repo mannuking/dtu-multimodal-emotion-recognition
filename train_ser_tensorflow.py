@@ -13,22 +13,26 @@ import numpy as np
 import pickle
 import librosa
 from gpu_config import *
+from feature_utils import ensure_features_exist, EMOTION_ORDER_LOWER
 
 tf.random.set_seed(SEED)
 
 def load_ser_embeddings():
-    f = np.load(os.path.join(SER_FEATURES_DIR, "features.npy"))
-    l = np.load(os.path.join(SER_FEATURES_DIR, "labels.npy"))
-    
-    l = np.array([str(lbl).strip().lower() for lbl in l])
-    EMOTION_ORDER_LOWER = ["angry", "disgust", "fear", "happy", "sad", "surprise", "neutral"]
+    # Use the cached features if present, otherwise compute on-the-fly from
+    # the audio manifest and cache for next run.
+    feats, labels = ensure_features_exist(
+        features_path=os.path.join(SER_FEATURES_DIR, "features.npy"),
+        labels_path=os.path.join(SER_FEATURES_DIR, "labels.npy"),
+        manifest_csv="combined_ser_dataset/metadata.csv",
+    )
+    # labels is int array — convert back to string for the rest of the pipeline
     label_map = {e: i for i, e in enumerate(EMOTION_ORDER_LOWER)}
-    
-    mask = np.array([lbl in label_map for lbl in l])
-    f, l = f[mask], l[mask]
+    l_str = np.array([EMOTION_ORDER_LOWER[int(lbl)] if int(lbl) in range(len(EMOTION_ORDER_LOWER)) else "neutral" for lbl in labels])
+    mask = np.array([lbl in label_map for lbl in l_str])
+    f, l = feats[mask], l_str[mask]
     y = np.array([label_map[lbl] for lbl in l])
     X = f.reshape(f.shape[0], f.shape[1], 1)
-    
+
     le = LabelEncoder()
     le.classes_ = np.array(EMOTION_ORDER_LOWER)
     return X, y, le

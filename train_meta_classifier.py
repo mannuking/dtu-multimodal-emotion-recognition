@@ -282,6 +282,20 @@ def train_meta_classifier():
     # Load triplet data
     df = pd.read_csv(TRIPLETS_MANIFEST)
     print(f"📊 Triplet data: {df.shape}")
+    print(f"   columns: {list(df.columns)}")
+
+    # Map each row to a synthetic text description (since the manifest has no
+    # real text data). Same approach as train_ter_pytorch.py fallback.
+    emotion_text = {
+        'angry': 'I am feeling very angry right now',
+        'disgust': 'This is completely disgusting',
+        'fear': 'I am scared and afraid',
+        'happy': 'I am so happy today',
+        'sad': 'I feel very sad',
+        'surprise': 'Wow what a surprise',
+        'neutral': 'I am speaking normally',
+    }
+    df['text'] = df['label'].astype(str).str.lower().map(emotion_text).fillna('I am speaking')
 
     texts = df['text'].astype(str).tolist()
     waves = df['speech_wav'].tolist()
