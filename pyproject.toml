@@ -52,6 +52,17 @@ dependencies = [
 cuda = [
     "tensorflow==2.15.1",
     "keras<3.0",  # Standalone keras package for TF_USE_LEGACY_KERAS compat
+    # NVIDIA CUDA libs (required for TF/PyTorch GPU access on Linux)
+    # These are the versions that TF 2.15.1 was tested against.
+    "nvidia-cuda-nvrtc-cu12==12.2.140",
+    "nvidia-cuda-runtime-cu12==12.2.140",
+    "nvidia-cudnn-cu12==8.9.2.26",
+    "nvidia-cublas-cu12==12.2.5.6",
+    "nvidia-cufft-cu12==11.0.8.103",
+    "nvidia-curand-cu12==10.3.3.56",
+    "nvidia-cusolver-cu12==11.5.2.141",
+    "nvidia-cusparse-cu12==12.1.2.141",
+    "nvidia-nccl-cu12==2.19.3",
 ]
 # Document / report generation
 docs = [
