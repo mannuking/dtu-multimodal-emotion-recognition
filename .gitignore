@@ -1,0 +1,79 @@
+# ============================================
+# DTU Multimodal Emotion Recognition — .gitignore
+# ============================================
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Virtual environments ---
+.venv/
+.venv-serve/
+venv/
+env/
+ENV/
+
+# --- Model checkpoints (large; published as GitHub Release assets instead) ---
+# Tracked INSTEAD in releases (see README): v1.0.0 contains all *.keras and *.pt
+model_checkpoints/*.keras
+model_checkpoints/*.pt
+model_checkpoints/*.data-*
+model_checkpoints/*.index
+model_checkpoints/checkpoint
+# Tracked because they're small text files with training metadata:
+# model_checkpoints/*.json
+# model_checkpoints/*.pkl
+# model_checkpoints/ter_pytorch_tokenizer/  (94 MB MobileBERT copy — also in release)
+model_checkpoints/ter_pytorch_tokenizer/
+
+# --- Datasets (large; re-downloaded per dataset's own instructions) ---
+combined_ser_dataset/*/
+combined_ser_dataset/metadata.csv
+ser_feature_output/*.npy
+mobilebert_pytorch/
+
+# --- Application state ---
+emotion_tracker.db
+*.db
+*.sqlite
+*.sqlite3
+
+# --- Secrets ---
+.env
+.env.local
+.env.*.local
+api.txt
+*.pem
+*.key
+
+# --- IDE / OS noise ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# --- Build / dist ---
+build/
+dist/
+*.whl
+
+# --- Reports / logs (PDF/DOCX rendered locally; markdown source tracked) ---
+reports/MODEL_INTEGRITY_TEST_REPORT.pdf
+reports/MODEL_INTEGRITY_TEST_REPORT.docx
+reports/preview_*.png
+*.log
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+*.ipynb_checkpoints/

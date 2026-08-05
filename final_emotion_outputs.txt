@@ -1,0 +1,414 @@
+======================================================================
+HYBRID MULTIMODAL EMOTION TRAINING PIPELINE
+======================================================================
+
+Step 1/4: Training TER (PyTorch with Adversarial)...
+PyTorch using device: cuda
+✅ TER model already trained!
+
+Step 2/4: Training FER (TensorFlow)...
+2025-10-10 17:52:40.382069: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 AVX_VNNI FMA
+To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+2025-10-10 17:52:40.444238: I tensorflow/core/util/util.cc:169] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2025-10-10 17:52:40.459169: E tensorflow/stream_executor/cuda/cuda_blas.cc:2981] Unable to register cuBLAS factory: Attempting to register factory for plugin cuBLAS when one has already been registered
+2025-10-10 17:52:40.757158: W tensorflow/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: :/home/dysl/cuda-12.1/targets/x86_64-linux/lib
+2025-10-10 17:52:40.757192: W tensorflow/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: :/home/dysl/cuda-12.1/targets/x86_64-linux/lib
+2025-10-10 17:52:40.757195: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+🚀 Starting FER model training...
+Found 28709 images belonging to 7 classes.
+Found 28709 images belonging to 7 classes.
+Found 7178 images belonging to 7 classes.
+2025-10-10 17:52:41.913711: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:980] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2025-10-10 17:52:41.944225: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:980] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2025-10-10 17:52:41.944326: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:980] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2025-10-10 17:52:41.944575: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 AVX_VNNI FMA
+To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+2025-10-10 17:52:41.945276: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:980] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2025-10-10 17:52:41.945357: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:980] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2025-10-10 17:52:41.945399: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:980] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2025-10-10 17:52:42.221903: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:980] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2025-10-10 17:52:42.221998: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:980] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2025-10-10 17:52:42.222047: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:980] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2025-10-10 17:52:42.222095: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1616] Created device /job:localhost/replica:0/task:0/device:GPU:0 with 21325 MB memory:  -> device: 0, name: NVIDIA GeForce RTX 4090, pci bus id: 0000:01:00.0, compute capability: 8.9
+
+🔄 Training vgg16_orig...
+✅ vgg16_orig already trained!
+
+🔄 Training vgg16_bal...
+✅ vgg16_bal already trained!
+
+🔄 Training resnet50_orig...
+✅ resnet50_orig already trained!
+
+🔄 Training resnet50_bal...
+✅ resnet50_bal already trained!
+✅ FER training complete!
+
+Step 3/4: Training SER (TensorFlow)...
+2025-10-10 17:52:44.741095: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 AVX_VNNI FMA
+To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+2025-10-10 17:52:44.802694: I tensorflow/core/util/util.cc:169] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2025-10-10 17:52:44.817899: E tensorflow/stream_executor/cuda/cuda_blas.cc:2981] Unable to register cuBLAS factory: Attempting to register factory for plugin cuBLAS when one has already been registered
+2025-10-10 17:52:45.135589: W tensorflow/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: :/home/dysl/cuda-12.1/targets/x86_64-linux/lib
+2025-10-10 17:52:45.135624: W tensorflow/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: :/home/dysl/cuda-12.1/targets/x86_64-linux/lib
+2025-10-10 17:52:45.135627: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+✅ SER model already trained!
+
+Step 4/4: Training Meta-Classifier (Hybrid)...
+2025-10-10 17:52:46.936841: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 AVX_VNNI FMA
+To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+2025-10-10 17:52:47.017311: I tensorflow/core/util/util.cc:169] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2025-10-10 17:52:47.033358: E tensorflow/stream_executor/cuda/cuda_blas.cc:2981] Unable to register cuBLAS factory: Attempting to register factory for plugin cuBLAS when one has already been registered
+2025-10-10 17:52:47.303123: W tensorflow/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer.so.7'; dlerror: libnvinfer.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: :/home/dysl/cuda-12.1/targets/x86_64-linux/lib
+2025-10-10 17:52:47.303161: W tensorflow/stream_executor/platform/default/dso_loader.cc:64] Could not load dynamic library 'libnvinfer_plugin.so.7'; dlerror: libnvinfer_plugin.so.7: cannot open shared object file: No such file or directory; LD_LIBRARY_PATH: :/home/dysl/cuda-12.1/targets/x86_64-linux/lib
+2025-10-10 17:52:47.303164: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Cannot dlopen some TensorRT libraries. If you would like to use Nvidia GPU with TensorRT, please make sure the missing libraries mentioned above are installed properly.
+🔄 Training hybrid meta-classifier...
+📊 Triplet data: (7000, 4)
+
+🔄 Getting predictions from all models...
+
+1️⃣ TER Predictions (PyTorch)...
+📥 Loading PyTorch TER model...
+✅ PyTorch TER model loaded
+
+2️⃣ SER Predictions (TensorFlow)...
+📥 Loading TensorFlow SER model...
+2025-10-10 17:53:27.704818: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:980] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2025-10-10 17:53:27.717749: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:980] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2025-10-10 17:53:27.717838: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:980] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2025-10-10 17:53:27.718019: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 AVX_VNNI FMA
+To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+2025-10-10 17:53:27.719762: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:980] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2025-10-10 17:53:27.719872: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:980] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2025-10-10 17:53:27.719944: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:980] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2025-10-10 17:53:27.720097: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:980] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2025-10-10 17:53:27.720178: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:980] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2025-10-10 17:53:27.720252: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:980] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2025-10-10 17:53:27.720321: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1616] Created device /job:localhost/replica:0/task:0/device:GPU:0 with 21012 MB memory:  -> device: 0, name: NVIDIA GeForce RTX 4090, pci bus id: 0000:01:00.0, compute capability: 8.9
+✅ TensorFlow SER model loaded
+/home/dysl/devesh/dty/dtu_env/lib/python3.10/site-packages/librosa/core/intervals.py:8: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  from pkg_resources import resource_filename
+2025-10-10 17:53:42.345596: I tensorflow/stream_executor/cuda/cuda_dnn.cc:384] Loaded cuDNN version 8700
+2025-10-10 17:53:43.510598: W tensorflow/stream_executor/gpu/asm_compiler.cc:230] Falling back to the CUDA driver for PTX compilation; ptxas does not support CC 8.9
+2025-10-10 17:53:43.510615: W tensorflow/stream_executor/gpu/asm_compiler.cc:233] Used ptxas at ptxas
+2025-10-10 17:53:43.510639: W tensorflow/stream_executor/gpu/redzone_allocator.cc:314] UNIMPLEMENTED: ptxas ptxas too old. Falling back to the driver to compile.
+Relying on driver to perform ptx compilation. 
+Modify $PATH to customize ptxas location.
+This message will be only logged once.
+2025-10-10 17:53:43.785673: I tensorflow/stream_executor/cuda/cuda_blas.cc:1614] TensorFloat-32 will be used for the matrix multiplication. This will only be logged once.
+
+3️⃣ FER Predictions (TensorFlow)...
+📥 Loading TensorFlow FER models...
+  ✅ Loaded vgg16_orig
+  ✅ Loaded vgg16_bal
+  ✅ Loaded resnet50_orig
+  ✅ Loaded resnet50_bal
+  Processing images 0/7000...
+WARNING:tensorflow:5 out of the last 7004 calls to <function Model.make_predict_function.<locals>.predict_function at 0x77146829c790> triggered tf.function retracing. Tracing is expensive and the excessive number of tracings could be due to (1) creating @tf.function repeatedly in a loop, (2) passing tensors with different shapes, (3) passing Python objects instead of tensors. For (1), please define your @tf.function outside of the loop. For (2), @tf.function has reduce_retracing=True option that can avoid unnecessary retracing. For (3), please refer to https://www.tensorflow.org/guide/function#controlling_retracing and https://www.tensorflow.org/api_docs/python/tf/function for  more details.
+  Processing images 200/7000...
+  Processing images 400/7000...
+  Processing images 600/7000...
+  Processing images 800/7000...
+  Processing images 1000/7000...
+  Processing images 1200/7000...
+  Processing images 1400/7000...
+  Processing images 1600/7000...
+  Processing images 1800/7000...
+  Processing images 2000/7000...
+  Processing images 2200/7000...
+  Processing images 2400/7000...
+  Processing images 2600/7000...
+  Processing images 2800/7000...
+  Processing images 3000/7000...
+  Processing images 3200/7000...
+  Processing images 3400/7000...
+  Processing images 3600/7000...
+  Processing images 3800/7000...
+  Processing images 4000/7000...
+  Processing images 4200/7000...
+  Processing images 4400/7000...
+  Processing images 4600/7000...
+  Processing images 4800/7000...
+  Processing images 5000/7000...
+  Processing images 5200/7000...
+  Processing images 5400/7000...
+  Processing images 5600/7000...
+  Processing images 5800/7000...
+  Processing images 6000/7000...
+  Processing images 6200/7000...
+  Processing images 6400/7000...
+  Processing images 6600/7000...
+  Processing images 6800/7000...
+
+📊 Combined features shape: X=(7000, 21), y=(7000,)
+
+🏋️ Training meta-classifier...
+Epoch 1/30
+ 85/140 [=================>............] - ETA: 0s - loss: 1.4075 - accuracy: 0.6434  
+Epoch 1: val_accuracy improved from -inf to 0.96071, saving model to model_checkpoints/meta_hybrid_best.keras
+140/140 [==============================] - 1s 1ms/step - loss: 1.0595 - accuracy: 0.7489 - val_loss: 0.2296 - val_accuracy: 0.9607 - lr: 0.0010
+Epoch 2/30
+ 87/140 [=================>............] - ETA: 0s - loss: 0.2267 - accuracy: 0.9533
+Epoch 2: val_accuracy improved from 0.96071 to 0.97857, saving model to model_checkpoints/meta_hybrid_best.keras
+140/140 [==============================] - 0s 1ms/step - loss: 0.1964 - accuracy: 0.9589 - val_loss: 0.0778 - val_accuracy: 0.9786 - lr: 0.0010
+Epoch 3/30
+ 98/140 [====================>.........] - ETA: 0s - loss: 0.1208 - accuracy: 0.9707
+Epoch 3: val_accuracy improved from 0.97857 to 0.98036, saving model to model_checkpoints/meta_hybrid_best.keras
+140/140 [==============================] - 0s 1ms/step - loss: 0.1189 - accuracy: 0.9708 - val_loss: 0.0595 - val_accuracy: 0.9804 - lr: 0.0010
+Epoch 4/30
+ 95/140 [===================>..........] - ETA: 0s - loss: 0.0921 - accuracy: 0.9760
+Epoch 4: val_accuracy did not improve from 0.98036
+140/140 [==============================] - 0s 706us/step - loss: 0.0864 - accuracy: 0.9766 - val_loss: 0.0539 - val_accuracy: 0.9777 - lr: 0.0010
+Epoch 5/30
+ 98/140 [====================>.........] - ETA: 0s - loss: 0.0786 - accuracy: 0.9799
+Epoch 5: val_accuracy improved from 0.98036 to 0.98482, saving model to model_checkpoints/meta_hybrid_best.keras
+140/140 [==============================] - 0s 804us/step - loss: 0.0732 - accuracy: 0.9808 - val_loss: 0.0481 - val_accuracy: 0.9848 - lr: 0.0010
+Epoch 6/30
+ 96/140 [===================>..........] - ETA: 0s - loss: 0.0594 - accuracy: 0.9850
+Epoch 6: val_accuracy improved from 0.98482 to 0.98571, saving model to model_checkpoints/meta_hybrid_best.keras
+140/140 [==============================] - 0s 1ms/step - loss: 0.0590 - accuracy: 0.9848 - val_loss: 0.0397 - val_accuracy: 0.9857 - lr: 0.0010
+Epoch 7/30
+ 81/140 [================>.............] - ETA: 0s - loss: 0.0543 - accuracy: 0.9846
+Epoch 7: val_accuracy did not improve from 0.98571
+140/140 [==============================] - 0s 749us/step - loss: 0.0527 - accuracy: 0.9853 - val_loss: 0.0375 - val_accuracy: 0.9857 - lr: 0.0010
+Epoch 8/30
+ 89/140 [==================>...........] - ETA: 0s - loss: 0.0525 - accuracy: 0.9863
+Epoch 8: val_accuracy improved from 0.98571 to 0.98750, saving model to model_checkpoints/meta_hybrid_best.keras
+140/140 [==============================] - 0s 928us/step - loss: 0.0539 - accuracy: 0.9850 - val_loss: 0.0376 - val_accuracy: 0.9875 - lr: 0.0010
+Epoch 9/30
+ 93/140 [==================>...........] - ETA: 0s - loss: 0.0503 - accuracy: 0.9869
+Epoch 9: val_accuracy improved from 0.98750 to 0.98839, saving model to model_checkpoints/meta_hybrid_best.keras
+140/140 [==============================] - 0s 847us/step - loss: 0.0450 - accuracy: 0.9877 - val_loss: 0.0341 - val_accuracy: 0.9884 - lr: 0.0010
+Epoch 10/30
+ 88/140 [=================>............] - ETA: 0s - loss: 0.0449 - accuracy: 0.9883
+Epoch 10: val_accuracy did not improve from 0.98839
+140/140 [==============================] - 0s 688us/step - loss: 0.0411 - accuracy: 0.9886 - val_loss: 0.0325 - val_accuracy: 0.9884 - lr: 0.0010
+Epoch 11/30
+ 97/140 [===================>..........] - ETA: 0s - loss: 0.0402 - accuracy: 0.9881
+Epoch 11: val_accuracy did not improve from 0.98839
+140/140 [==============================] - 0s 670us/step - loss: 0.0385 - accuracy: 0.9897 - val_loss: 0.0318 - val_accuracy: 0.9884 - lr: 0.0010
+Epoch 12/30
+ 95/140 [===================>..........] - ETA: 0s - loss: 0.0356 - accuracy: 0.9914
+Epoch 12: val_accuracy did not improve from 0.98839
+140/140 [==============================] - 0s 711us/step - loss: 0.0343 - accuracy: 0.9922 - val_loss: 0.0300 - val_accuracy: 0.9884 - lr: 0.0010
+Epoch 13/30
+ 88/140 [=================>............] - ETA: 0s - loss: 0.0277 - accuracy: 0.9925
+Epoch 13: val_accuracy did not improve from 0.98839
+140/140 [==============================] - 0s 761us/step - loss: 0.0263 - accuracy: 0.9926 - val_loss: 0.0301 - val_accuracy: 0.9884 - lr: 0.0010
+Epoch 14/30
+ 89/140 [==================>...........] - ETA: 0s - loss: 0.0363 - accuracy: 0.9895
+Epoch 14: val_accuracy improved from 0.98839 to 0.99018, saving model to model_checkpoints/meta_hybrid_best.keras
+140/140 [==============================] - 0s 885us/step - loss: 0.0337 - accuracy: 0.9900 - val_loss: 0.0299 - val_accuracy: 0.9902 - lr: 0.0010
+Epoch 15/30
+ 98/140 [====================>.........] - ETA: 0s - loss: 0.0315 - accuracy: 0.9904
+Epoch 15: val_accuracy did not improve from 0.99018
+140/140 [==============================] - 0s 710us/step - loss: 0.0303 - accuracy: 0.9908 - val_loss: 0.0280 - val_accuracy: 0.9902 - lr: 0.0010
+Epoch 16/30
+ 93/140 [==================>...........] - ETA: 0s - loss: 0.0266 - accuracy: 0.9926
+Epoch 16: val_accuracy improved from 0.99018 to 0.99107, saving model to model_checkpoints/meta_hybrid_best.keras
+140/140 [==============================] - 0s 1ms/step - loss: 0.0241 - accuracy: 0.9931 - val_loss: 0.0273 - val_accuracy: 0.9911 - lr: 0.0010
+Epoch 17/30
+ 79/140 [===============>..............] - ETA: 0s - loss: 0.0247 - accuracy: 0.9933
+Epoch 17: val_accuracy did not improve from 0.99107
+140/140 [==============================] - 0s 784us/step - loss: 0.0276 - accuracy: 0.9915 - val_loss: 0.0284 - val_accuracy: 0.9902 - lr: 0.0010
+Epoch 18/30
+ 93/140 [==================>...........] - ETA: 0s - loss: 0.0237 - accuracy: 0.9936
+Epoch 18: val_accuracy did not improve from 0.99107
+140/140 [==============================] - 0s 718us/step - loss: 0.0252 - accuracy: 0.9929 - val_loss: 0.0275 - val_accuracy: 0.9911 - lr: 0.0010
+Epoch 19/30
+ 87/140 [=================>............] - ETA: 0s - loss: 0.0312 - accuracy: 0.9925
+Epoch 19: val_accuracy did not improve from 0.99107
+140/140 [==============================] - 0s 761us/step - loss: 0.0269 - accuracy: 0.9933 - val_loss: 0.0304 - val_accuracy: 0.9893 - lr: 0.0010
+Epoch 20/30
+ 92/140 [==================>...........] - ETA: 0s - loss: 0.0299 - accuracy: 0.9905
+Epoch 20: val_accuracy did not improve from 0.99107
+140/140 [==============================] - 0s 689us/step - loss: 0.0277 - accuracy: 0.9913 - val_loss: 0.0277 - val_accuracy: 0.9902 - lr: 0.0010
+Epoch 21/30
+ 94/140 [===================>..........] - ETA: 0s - loss: 0.0205 - accuracy: 0.9953    
+Epoch 21: val_accuracy did not improve from 0.99107
+140/140 [==============================] - 0s 694us/step - loss: 0.0231 - accuracy: 0.9940 - val_loss: 0.0325 - val_accuracy: 0.9902 - lr: 0.0010
+Epoch 22/30
+ 96/140 [===================>..........] - ETA: 0s - loss: 0.0220 - accuracy: 0.9919
+Epoch 22: val_accuracy did not improve from 0.99107
+140/140 [==============================] - 0s 687us/step - loss: 0.0225 - accuracy: 0.9924 - val_loss: 0.0290 - val_accuracy: 0.9893 - lr: 5.0000e-04
+Epoch 23/30
+ 79/140 [===============>..............] - ETA: 0s - loss: 0.0225 - accuracy: 0.9949
+Epoch 23: val_accuracy did not improve from 0.99107
+140/140 [==============================] - 0s 743us/step - loss: 0.0199 - accuracy: 0.9953 - val_loss: 0.0294 - val_accuracy: 0.9902 - lr: 5.0000e-04
+Epoch 24/30
+ 95/140 [===================>..........] - ETA: 0s - loss: 0.0177 - accuracy: 0.9937
+Epoch 24: val_accuracy did not improve from 0.99107
+140/140 [==============================] - 0s 703us/step - loss: 0.0224 - accuracy: 0.9926 - val_loss: 0.0283 - val_accuracy: 0.9902 - lr: 5.0000e-04
+Epoch 25/30
+ 91/140 [==================>...........] - ETA: 0s - loss: 0.0199 - accuracy: 0.9945
+Epoch 25: val_accuracy did not improve from 0.99107
+140/140 [==============================] - 0s 705us/step - loss: 0.0196 - accuracy: 0.9949 - val_loss: 0.0269 - val_accuracy: 0.9911 - lr: 5.0000e-04
+Epoch 26/30
+ 87/140 [=================>............] - ETA: 0s - loss: 0.0228 - accuracy: 0.9935
+Epoch 26: val_accuracy did not improve from 0.99107
+140/140 [==============================] - 0s 791us/step - loss: 0.0205 - accuracy: 0.9940 - val_loss: 0.0281 - val_accuracy: 0.9902 - lr: 5.0000e-04
+
+✅ Meta-classifier Test Accuracy: 0.9957
+✅ Meta-classifier saved to: model_checkpoints/meta_hybrid_best.keras
+
+======================================================================
+✅ ALL TRAINING COMPLETE!
+======================================================================
+
+
+(dtu_env) dysl@drdo-OMEN-by-HP-45L-Gaming-Desktop-GT22-1xxx:~/devesh/dty$ pip list
+Package                      Version
+---------------------------- -----------
+absl-py                      2.3.1
+aiohappyeyeballs             2.6.1
+aiohttp                      3.12.15
+aiosignal                    1.4.0
+albucore                     0.0.24
+albumentations               2.0.8
+annotated-types              0.7.0
+astunparse                   1.6.3
+async-timeout                5.0.1
+attrs                        25.3.0
+audioread                    3.0.0
+brotlicffi                   1.0.9.2
+cachetools                   6.2.0
+certifi                      2025.10.5
+cffi                         1.17.1
+charset-normalizer           3.3.2
+click                        8.2.1
+conda-pack                   0.8.1
+contourpy                    1.3.2
+cycler                       0.12.1
+datasets                     4.0.0
+decorator                    5.2.1
+dill                         0.3.8
+einops                       0.8.1
+filelock                     3.17.0
+flatbuffers                  25.9.23
+fonttools                    4.59.2
+frozenlist                   1.7.0
+fsspec                       2025.9.0
+gast                         0.4.0
+gmpy2                        2.2.1
+google-auth                  2.41.1
+google-auth-oauthlib         0.4.6
+google-pasta                 0.2.0
+grpcio                       1.75.1
+h5py                         3.14.0
+hf-xet                       1.1.10
+huggingface-hub              0.35.3
+idna                         3.7
+imageio                      2.37.0
+Jinja2                       3.1.6
+joblib                       1.5.2
+keras                        2.10.0
+Keras-Preprocessing          1.1.2
+kiwisolver                   1.4.9
+lazy_loader                  0.4
+libclang                     18.1.1
+librosa                      0.10.0
+llvmlite                     0.45.1
+Markdown                     3.9
+markdown-it-py               4.0.0
+MarkupSafe                   3.0.2
+matplotlib                   3.10.6
+mdurl                        0.1.2
+mkl_fft                      1.3.11
+mkl_random                   1.2.8
+mkl-service                  2.4.0
+ml_dtypes                    0.5.3
+mpmath                       1.3.0
+msgpack                      1.1.2
+multidict                    6.6.4
+multiprocess                 0.70.16
+namex                        0.1.0
+networkx                     3.4.2
+nltk                         3.9.1
+numba                        0.62.1
+numpy                        1.23.5
+nvidia-cublas-cu12           12.8.4.1
+nvidia-cuda-cupti-cu12       12.8.90
+nvidia-cuda-nvrtc-cu12       12.8.93
+nvidia-cuda-runtime-cu12     12.8.90
+nvidia-cudnn-cu12            9.10.2.21
+nvidia-cufft-cu12            11.3.3.83
+nvidia-cufile-cu12           1.13.1.3
+nvidia-curand-cu12           10.3.9.90
+nvidia-cusolver-cu12         11.7.3.90
+nvidia-cusparse-cu12         12.5.8.93
+nvidia-cusparselt-cu12       0.7.1
+nvidia-nccl-cu12             2.27.3
+nvidia-nvjitlink-cu12        12.8.93
+nvidia-nvtx-cu12             12.8.90
+oauthlib                     3.3.1
+opencv-python                4.12.0.88
+opencv-python-headless       4.12.0.88
+opt_einsum                   3.4.0
+optree                       0.17.0
+packaging                    25.0
+pandas                       2.3.2
+pillow                       11.3.0
+pip                          25.2
+platformdirs                 4.5.0
+polars                       1.33.1
+pooch                        1.8.2
+propcache                    0.3.2
+protobuf                     3.19.6
+psutil                       7.0.0
+pyarrow                      21.0.0
+pyasn1                       0.6.1
+pyasn1_modules               0.4.2
+pycparser                    2.23
+pydantic                     2.11.7
+pydantic_core                2.33.2
+Pygments                     2.19.2
+pyparsing                    3.2.3
+PySocks                      1.7.1
+python-dateutil              2.9.0.post0
+pytz                         2025.2
+PyYAML                       6.0.3
+regex                        2025.9.18
+requests                     2.28.2
+requests-oauthlib            2.0.0
+rich                         14.1.0
+rsa                          4.9.1
+safetensors                  0.6.2
+scikit-image                 0.25.2
+scikit-learn                 1.2.2
+scipy                        1.15.3
+seaborn                      0.12.2
+setuptools                   80.9.0
+simsimd                      6.5.3
+six                          1.17.0
+soundfile                    0.12.1
+soxr                         1.0.0
+stringzilla                  4.0.7
+sympy                        1.14.0
+tensorboard                  2.10.1
+tensorboard-data-server      0.6.1
+tensorboard-plugin-wit       1.8.1
+tensorflow                   2.10.1
+tensorflow-estimator         2.10.0
+tensorflow-io-gcs-filesystem 0.37.1
+termcolor                    3.1.0
+threadpoolctl                3.6.0
+tifffile                     2025.5.10
+tokenizers                   0.13.3
+torch                        2.0.1
+torchaudio                   2.0.2
+torchvision                  0.15.2
+tqdm                         4.65.0
+transformers                 4.30.2
+triton                       3.4.0
+typing_extensions            4.15.0
+typing-inspection            0.4.1
+tzdata                       2025.2
+ultralytics                  8.3.198
+ultralytics-thop             2.0.17
+urllib3                      1.26.20
+Werkzeug                     3.1.3
+wheel                        0.45.1
+wrapt                        1.17.3
+xxhash                       3.5.0
+yarl                         1.20.1
+

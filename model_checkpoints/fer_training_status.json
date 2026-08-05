@@ -1,0 +1,8 @@
+{
+  "completed_models": [
+    "resnet50_bal",
+    "vgg16_orig",
+    "vgg16_bal",
+    "resnet50_orig"
+  ]
+}

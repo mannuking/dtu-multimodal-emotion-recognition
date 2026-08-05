@@ -1,0 +1,77 @@
+======================================================================
+SER INTEGRITY TEST — verifying the trained 1D-CNN on real audio
+======================================================================
+TensorFlow: 2.13.1
+Librosa:    0.10.1
+Seed:       42
+
+[1/5] Loading combined_ser_dataset/metadata.csv ...
+      Total samples in manifest: 16018
+      Class distribution:
+emotion
+angry       2515
+disgust     2515
+sad         2515
+fear        2515
+happy       2515
+neutral     2199
+surprise    1244
+
+[2/5] Building stratified 80/10/20 split with SEED=42 ...
+      Train: 12815, Val: 1601, Test: 1602
+      Test class counts: {0: 252, 1: 251, 2: 252, 3: 252, 4: 251, 5: 124, 6: 220}
+
+[3/5] Loading ser_best.keras checkpoint ...
+      ✅ Loaded 37.6 MB model
+      Model input shape: (None, 11044, 1)
+      Model output shape: (None, 7)
+
+[4/5] Running inference on test split (1602 samples) ...
+      200/1602  (9.2s, ETA 65s)
+      400/1602  (17.5s, ETA 53s)
+      600/1602  (26.1s, ETA 44s)
+      800/1602  (34.4s, ETA 35s)
+      1000/1602  (43.0s, ETA 26s)
+      1200/1602  (51.5s, ETA 17s)
+      1400/1602  (59.8s, ETA 9s)
+      1600/1602  (68.2s, ETA 0s)
+      ✅ Inference complete: 1602 samples in 68.3s (42.6 ms/sample, 0 failed)
+
+[5/5] Computing metrics ...
+      Accuracy:           0.0774  (7.74%)
+      Macro F1:           0.0205
+      Weighted F1:        0.0111
+
+      Per-class report:
+              precision    recall  f1-score   support
+
+       Angry     0.0000    0.0000    0.0000       252
+     Disgust     0.0000    0.0000    0.0000       251
+        Fear     0.0000    0.0000    0.0000       252
+       Happy     0.0000    0.0000    0.0000       252
+         Sad     0.0000    0.0000    0.0000       251
+    Surprise     0.0774    1.0000    0.1437       124
+     Neutral     0.0000    0.0000    0.0000       220
+
+    accuracy                         0.0774      1602
+   macro avg     0.0111    0.1429    0.0205      1602
+weighted avg     0.0060    0.0774    0.0111      1602
+
+      Confusion matrix (rows = true, cols = pred):
+                       Angry   Disgust      Fear     Happy       Sad  Surprise   Neutral
+      Angry                0         0         0         0         0       252         0
+      Disgust              0         0         0         0         0       251         0
+      Fear                 0         0         0         0         0       252         0
+      Happy                0         0         0         0         0       252         0
+      Sad                  0         0         0         0         0       251         0
+      Surprise             0         0         0         0         0       124         0
+      Neutral              0         0         0         0         0       220         0
+
+======================================================================
+VERIFICATION SUMMARY
+======================================================================
+  Paper claim: 80.09% accuracy, 0.73 macro F1
+  Measured:    7.74% accuracy, 0.0205 macro F1
+  Δ accuracy:  -0.7235 (lower than paper)
+
+Results saved to reports/ser_verification.json

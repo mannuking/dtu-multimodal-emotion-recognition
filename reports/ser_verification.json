@@ -1,0 +1,136 @@
+{
+  "model": "SER (1D-CNN)",
+  "checkpoint": "model_checkpoints/ser_best.keras",
+  "test_samples": 1602,
+  "failed": 0,
+  "elapsed_seconds": 68.27,
+  "ms_per_sample": 42.61,
+  "accuracy": 0.0774,
+  "macro_f1": 0.0205,
+  "weighted_f1": 0.0111,
+  "per_class_report": {
+    "Angry": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1-score": 0.0,
+      "support": 252.0
+    },
+    "Disgust": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1-score": 0.0,
+      "support": 251.0
+    },
+    "Fear": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1-score": 0.0,
+      "support": 252.0
+    },
+    "Happy": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1-score": 0.0,
+      "support": 252.0
+    },
+    "Sad": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1-score": 0.0,
+      "support": 251.0
+    },
+    "Surprise": {
+      "precision": 0.07740324594257178,
+      "recall": 1.0,
+      "f1-score": 0.1436848203939745,
+      "support": 124.0
+    },
+    "Neutral": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1-score": 0.0,
+      "support": 220.0
+    },
+    "accuracy": 0.07740324594257178,
+    "macro avg": {
+      "precision": 0.01105760656322454,
+      "recall": 0.14285714285714285,
+      "f1-score": 0.02052640291342493,
+      "support": 1602.0
+    },
+    "weighted avg": {
+      "precision": 0.005991262482446255,
+      "recall": 0.07740324594257178,
+      "f1-score": 0.011121671491169063,
+      "support": 1602.0
+    }
+  },
+  "confusion_matrix": [
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      252,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      251,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      252,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      252,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      251,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      124,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      220,
+      0
+    ]
+  ],
+  "paper_claim_accuracy": 0.8009,
+  "paper_claim_macro_f1": 0.73,
+  "delta_accuracy": -0.7235
+}

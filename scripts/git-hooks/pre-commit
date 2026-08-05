@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# pre-commit secret guard — blocks commits that contain known secret patterns.
+# Adapted from the cvc-channel-wiring-troubleshoot / secrets-in-version-control
+# recipes. NUL-safe filename handling so paths with spaces are scanned.
+set -e
+
+# Patterns that should NEVER appear in tracked source code.
+PATTERNS=(
+  'TELEGRAM_BOT_TOKEN=[0-9]+:AA[A-Za-z0-9_-]+|Telegram bot token in env-style assignment'
+  'token="[0-9]+:AA[A-Za-z0-9_-]+"|Telegram bot token hardcoded as Python string'
+  "sk-[A-Za-z0-9]{20,}|OpenAI-style API key (sk-...)"
+  'sk-ant-[A-Za-z0-9_-]{20,}|Anthropic API key'
+  'ghp_[A-Za-z0-9]{20,}|GitHub PAT (ghp_...)'
+  'github_pat_[A-Za-z0-9_]{20,}|GitHub fine-grained PAT'
+  'xai-[A-Za-z0-9_-]{20,}|xAI API key'
+  'AKIA[0-9A-Z]{16}|AWS access key ID'
+  'AIza[0-9A-Za-z_-]{35}|Google API key'
+  '-----BEGIN [A-Z ]*PRIVATE KEY-----|PEM-encoded private key block'
+)
+
+FAILED=0
+while IFS= read -r -d '' file; do
+  [[ -f "$file" ]] || continue
+  file_type=$(file --mime-type -b "$file" 2>/dev/null || echo "text/plain")
+  [[ "$file_type" == text/* ]] || continue
+  for pat in "${PATTERNS[@]}"; do
+    regex="${pat%%|*}"
+    desc="${pat##*|}"
+    if grep -E -nH -- "$regex" "$file" >/dev/null 2>&1; then
+      echo "BLOCKED pre-commit: $desc"
+      echo "  in file: $file"
+      grep -E -n -- "$regex" "$file" | head -3 | sed 's/^/    > /'
+      echo ""
+      echo "  Move the secret to a .gitignored location (.env, ~/.config/, env var)"
+      echo "  and re-stage the file."
+      echo ""
+      FAILED=1
+    fi
+  done
+done < <(git diff --cached --diff-filter=ACMR -z --name-only 2>/dev/null || true)
+
+if [[ $FAILED -ne 0 ]]; then
+  echo "Commit blocked. To bypass (NOT recommended): git commit --no-verify"
+  exit 1
+fi
+exit 0
