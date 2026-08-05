@@ -51,6 +51,7 @@ dependencies = [
 # we need 2.15+ to coexist with torch 2.5+.
 cuda = [
     "tensorflow==2.15.1",
+    "keras<3.0",  # Standalone keras package for TF_USE_LEGACY_KERAS compat
 ]
 # Document / report generation
 docs = [

@@ -162,17 +162,29 @@ def train_ter_pytorch():
     
     print("🔄 Training TER with PyTorch (adversarial training)...")
     
-    # Use local MobileBERT (offline mode)
-    if os.path.exists(LOCAL_MOBILEBERT_PYTORCH):
+    # Use local MobileBERT (offline mode) — download if missing
+    if not os.path.exists(LOCAL_MOBILEBERT_PYTORCH):
+        print(f"⚠️  MobileBERT not found at {LOCAL_MOBILEBERT_PYTORCH}, downloading...")
+        os.makedirs(LOCAL_MOBILEBERT_PYTORCH, exist_ok=True)
+        try:
+            tokenizer = MobileBertTokenizer.from_pretrained(
+                "google/mobilebert-uncased", cache_dir=LOCAL_MOBILEBERT_PYTORCH
+            )
+            model = MobileBertForSequenceClassification.from_pretrained(
+                "google/mobilebert-uncased",
+                cache_dir=LOCAL_MOBILEBERT_PYTORCH,
+                num_labels=NUM_CLASSES
+            ).to(device)
+        except Exception as e:
+            print(f"❌ MobileBERT download failed: {e}")
+            print("Skipping TER training (text modality)")
+            return
+    else:
         print(f"📥 Loading MobileBERT from local: {LOCAL_MOBILEBERT_PYTORCH}")
         tokenizer = MobileBertTokenizer.from_pretrained(LOCAL_MOBILEBERT_PYTORCH)
         model = MobileBertForSequenceClassification.from_pretrained(
             LOCAL_MOBILEBERT_PYTORCH, num_labels=NUM_CLASSES
         ).to(device)
-    else:
-        print("❌ Local MobileBERT not found at:", LOCAL_MOBILEBERT_PYTORCH)
-        print("Please download or check the path")
-        return
 
     
     xtr, ytr = load_text_csv(TEXT_TRAIN_CSV)
