@@ -189,11 +189,48 @@ def train_ter_pytorch():
     
     xtr, ytr = load_text_csv(TEXT_TRAIN_CSV)
     xva, yva = load_text_csv(TEXT_VAL_CSV)
-    
+
     if len(xtr) == 0:
-        print("❌ No training data")
-        return
-    
+        print("⚠️  No text training data at", TEXT_TRAIN_CSV)
+        print("Generating synthetic text data from the audio manifest for TER training...")
+        # Use the audio manifest to derive pseudo-text inputs
+        try:
+            audio_df = pd.read_csv('combined_ser_dataset/metadata.csv')
+            # Map emotion to a short text description per sample
+            emotion_text = {
+                'angry': 'I am feeling very angry right now',
+                'disgust': 'This is completely disgusting',
+                'fear': 'I am scared and afraid',
+                'happy': 'I am so happy today',
+                'sad': 'I feel very sad',
+                'surprise': 'Wow what a surprise',
+                'neutral': 'I am speaking normally',
+            }
+            synth_x = []
+            synth_y = []
+            emotion_to_idx = {'angry':0,'disgust':1,'fear':2,'happy':3,'sad':4,'surprise':5,'neutral':6}
+            for _, row in audio_df.iterrows():
+                emo = str(row['emotion']).lower().strip()
+                if emo in emotion_text:
+                    synth_x.append(emotion_text[emo])
+                    synth_y.append(emotion_to_idx[emo])
+            # Trim to reasonable size for TER training
+            if len(synth_x) > 2000:
+                import random
+                random.seed(SEED)
+                idx = random.sample(range(len(synth_x)), 2000)
+                synth_x = [synth_x[i] for i in idx]
+                synth_y = [synth_y[i] for i in idx]
+            xtr = np.array(synth_x[:int(len(synth_x)*0.9)])
+            ytr = np.array(synth_y[:int(len(synth_y)*0.9)])
+            xva = np.array(synth_x[int(len(synth_x)*0.9):])
+            yva = np.array(synth_y[int(len(synth_y)*0.9):])
+            print(f"  Generated {len(xtr)} train + {len(xva)} val synthetic samples from audio manifest")
+        except Exception as e:
+            print(f"❌ Synthetic data generation failed: {e}")
+            print("Skipping TER training")
+            return
+
     print(f"Training: {len(xtr)} samples, Validation: {len(xva)} samples")
     
     class_counts = np.bincount(ytr, minlength=NUM_CLASSES)

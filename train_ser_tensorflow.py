@@ -4,9 +4,9 @@ import os
 os.environ['TF_USE_LEGACY_KERAS'] = '1'
 
 import tensorflow as tf
-from tensorflow.keras import layers, Model
-from tensorflow.keras.callbacks import ReduceLROnPlateau, ModelCheckpoint, EarlyStopping
-from tensorflow.keras.optimizers import Adam
+from keras import layers, Model
+from keras.callbacks import ReduceLROnPlateau, ModelCheckpoint, EarlyStopping
+from keras.optimizers import Adam
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 import numpy as np

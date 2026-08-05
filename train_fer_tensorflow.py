@@ -4,10 +4,10 @@ import os
 os.environ['TF_USE_LEGACY_KERAS'] = '1'
 
 import tensorflow as tf
-from tensorflow.keras import layers, Model
-from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.keras.callbacks import ReduceLROnPlateau, ModelCheckpoint, EarlyStopping
-from tensorflow.keras.optimizers import Adam
+from keras import layers, Model
+from keras.preprocessing.image import ImageDataGenerator
+from keras.callbacks import ReduceLROnPlateau, ModelCheckpoint, EarlyStopping
+from keras.optimizers import Adam
 from sklearn.utils import class_weight
 import numpy as np
 from gpu_config import *

@@ -26,7 +26,7 @@ import pandas as pd
 import librosa
 import tensorflow as tf
 tf.get_logger().setLevel('ERROR')
-from tensorflow.keras import layers, Model
+from keras import layers, Model
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, f1_score, confusion_matrix, classification_report
 

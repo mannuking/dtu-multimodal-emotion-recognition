@@ -47,6 +47,10 @@ fi
 echo "uv location: $(which uv)"
 echo "uv version: $(uv --version)"
 
+# Sync deps (idempotent — fast if up-to-date, slow on first run)
+echo "Syncing Python dependencies..."
+uv sync --extra cuda
+
 # ---- Verify dataset is in place ----
 if [[ ! -f "combined_ser_dataset/metadata.csv" ]]; then
     echo "ERROR: combined_ser_dataset/metadata.csv missing"

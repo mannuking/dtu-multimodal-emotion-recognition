@@ -14,8 +14,8 @@ from transformers import MobileBertTokenizer, MobileBertForSequenceClassificatio
 
 # TensorFlow imports
 import tensorflow as tf
-from tensorflow.keras import layers, Model
-from tensorflow.keras.optimizers import Adam
+from keras import layers, Model
+from keras.optimizers import Adam
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 import librosa
@@ -195,7 +195,7 @@ def load_ser_tensorflow():
     f = np.load(os.path.join(SER_FEATURES_DIR, "features.npy"))
     
     # Build model architecture (same as training)
-    from tensorflow.keras import layers, Model
+    from keras import layers, Model
     I = layers.Input(shape=(f.shape[1], 1))
     x = layers.Conv1D(256, 5, padding='same')(I)
     x = layers.BatchNormalization()(x)
