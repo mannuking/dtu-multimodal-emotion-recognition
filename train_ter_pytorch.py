@@ -161,29 +161,55 @@ def train_ter_pytorch():
         return
     
     print("🔄 Training TER with PyTorch (adversarial training)...")
-    
+
+    # Clean up partial cache from previous failed downloads so we re-fetch
+    # the full model. Only delete if the dir has only some files (config but no weights).
+    if os.path.exists(LOCAL_MOBILEBERT_PYTORCH):
+        has_weights = False
+        for root, dirs, files in os.walk(LOCAL_MOBILEBERT_PYTORCH):
+            if 'pytorch_model.bin' in files or 'model.safetensors' in files:
+                has_weights = True
+                break
+        if not has_weights:
+            import shutil
+            print(f"  Cleaning partial cache at {LOCAL_MOBILEBERT_PYTORCH}")
+            shutil.rmtree(LOCAL_MOBILEBERT_PYTORCH)
+
     # Use local MobileBERT (offline mode) — download if missing
-    if not os.path.exists(LOCAL_MOBILEBERT_PYTORCH):
+    # HuggingFace `cache_dir` puts files in nested `models--<org>--<name>/snapshots/<hash>/`
+    # We need to load from that snapshot path, not the cache_dir itself.
+    snapshot_path = None
+    if os.path.exists(LOCAL_MOBILEBERT_PYTORCH):
+        # Check if it has the model files (config.json + pytorch_model.bin)
+        for root, dirs, files in os.walk(LOCAL_MOBILEBERT_PYTORCH):
+            if 'config.json' in files and ('pytorch_model.bin' in files or 'model.safetensors' in files):
+                snapshot_path = root
+                break
+
+    if snapshot_path is None:
         print(f"⚠️  MobileBERT not found at {LOCAL_MOBILEBERT_PYTORCH}, downloading...")
         os.makedirs(LOCAL_MOBILEBERT_PYTORCH, exist_ok=True)
         try:
-            tokenizer = MobileBertTokenizer.from_pretrained(
-                "google/mobilebert-uncased", cache_dir=LOCAL_MOBILEBERT_PYTORCH
-            )
-            model = MobileBertForSequenceClassification.from_pretrained(
-                "google/mobilebert-uncased",
+            from huggingface_hub import snapshot_download
+            snapshot_path = snapshot_download(
+                repo_id="google/mobilebert-uncased",
                 cache_dir=LOCAL_MOBILEBERT_PYTORCH,
-                num_labels=NUM_CLASSES
+                allow_patterns=["*.json", "*.txt", "pytorch_model.bin", "*.safetensors", "tokenizer*"],
+            )
+            print(f"  Downloaded to: {snapshot_path}")
+            tokenizer = MobileBertTokenizer.from_pretrained(snapshot_path)
+            model = MobileBertForSequenceClassification.from_pretrained(
+                snapshot_path, num_labels=NUM_CLASSES
             ).to(device)
         except Exception as e:
             print(f"❌ MobileBERT download failed: {e}")
             print("Skipping TER training (text modality)")
             return
     else:
-        print(f"📥 Loading MobileBERT from local: {LOCAL_MOBILEBERT_PYTORCH}")
-        tokenizer = MobileBertTokenizer.from_pretrained(LOCAL_MOBILEBERT_PYTORCH)
+        print(f"📥 Loading MobileBERT from local snapshot: {snapshot_path}")
+        tokenizer = MobileBertTokenizer.from_pretrained(snapshot_path)
         model = MobileBertForSequenceClassification.from_pretrained(
-            LOCAL_MOBILEBERT_PYTORCH, num_labels=NUM_CLASSES
+            snapshot_path, num_labels=NUM_CLASSES
         ).to(device)
 
     

@@ -51,12 +51,11 @@ dependencies = [
 # we need 2.15+ to coexist with torch 2.5+.
 cuda = [
     "tensorflow==2.15.1",
-    "keras<3.0",  # Standalone keras package for TF_USE_LEGACY_KERAS compat
+    "keras<3.0",
+    "tf_keras<2.16",  # Standalone tf_keras for TF_USE_LEGACY_KERAS compat
     # NVIDIA CUDA libraries — torch 2.5.1 ships with its own pinned versions
     # via transitive deps, so we don't pin them here (would conflict with
     # torch's resolution). TF 2.15.1 finds them via the venv's site-packages.
-    # If TF still reports 0 GPUs, run:
-    #   uv pip install nvidia-cudnn-cu12 nvidia-cuda-runtime-cu12
 ]
 # Document / report generation
 docs = [

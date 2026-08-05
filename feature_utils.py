@@ -9,6 +9,10 @@ extracted features match the saved features-001.npy format:
   - Frame-level concatenation: [ZCR(1), RMS(1), energy(1), entropy(1), MFCC40]
   - Total: 44 features × 251 frames = 11,044 dims per sample
 
+NOTE: TARGET_SR is fixed to 16000 to match the saved checkpoint's training
+config. The gpu_config.py default is 22050 but that produces different
+mel filter banks at this n_fft, so we override here.
+
 This lets train_ser_tensorflow.py run end-to-end on a fresh HPC node
 without needing pre-computed features.npy files.
 """
@@ -17,10 +21,10 @@ import numpy as np
 import pandas as pd
 import librosa
 
-# Match gpu_config.py exactly
-TARGET_SR = 22050
+# Override to match the original training (verify_ser.py uses 16000)
+TARGET_SR = 16000
 OFFSET_S = 0.5
-DUR_S = 2.5
+DUR_S = 3.0
 EMOTION_ORDER_LOWER = ["angry", "disgust", "fear", "happy", "sad", "surprise", "neutral"]
 
 HOP = 192
@@ -60,7 +64,12 @@ def extract_features(y, sr=TARGET_SR, n_mfcc=N_MFCC):
     """Returns flat 11044-dim vector (251 frames × 44 features)."""
     hop = HOP
     win = WIN
-    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=n_mfcc, n_fft=win, hop_length=hop).T
+    # n_mels must be >= n_mfcc and high enough to populate filters at sr=16000.
+    # Default n_mels=128 is fine but fmax needs to be set explicitly to sr/2.
+    mfcc = librosa.feature.mfcc(
+        y=y, sr=sr, n_mfcc=n_mfcc, n_fft=win, hop_length=hop,
+        n_mels=80, fmax=sr / 2
+    ).T
     zcr = librosa.feature.zero_crossing_rate(y=y, frame_length=win, hop_length=hop).T
     rms = librosa.feature.rms(y=y, frame_length=win, hop_length=hop).T
     energy = rms ** 2 * win
@@ -79,17 +88,29 @@ def extract_features_batch(wav_paths, manifest_df=None, n_mfcc=N_MFCC, verbose=T
     feats_list = []
     labels_list = []
     skipped = 0
+    skipped_short = 0
+    skipped_shape = 0
     total = len(wav_paths)
     for i, path in enumerate(wav_paths):
         try:
             y = preprocess_audio(path)
             if len(y) < int(0.5 * TARGET_SR):
+                skipped_short += 1
                 skipped += 1
                 continue
             f = extract_features(y, sr=TARGET_SR, n_mfcc=n_mfcc)
-            if len(f) != 251 * 44:
+            # Allow either 10912 (248 frames) or 11044 (251 frames) shapes
+            if len(f) not in (10912, 11044, 248 * 44, 251 * 44):
+                if skipped_shape < 3:
+                    print(f"  [features] skip {path}: unexpected shape {len(f)}")
+                skipped_shape += 1
                 skipped += 1
                 continue
+            # Pad/truncate to canonical 11044
+            if len(f) < 11044:
+                f = np.pad(f, (0, 11044 - len(f)))
+            elif len(f) > 11044:
+                f = f[:11044]
             feats_list.append(f)
             # Label from manifest_df if provided, else 0
             if manifest_df is not None and 'emotion' in manifest_df.columns:
@@ -99,12 +120,14 @@ def extract_features_batch(wav_paths, manifest_df=None, n_mfcc=N_MFCC, verbose=T
             else:
                 labels_list.append(0)
             if verbose and (i + 1) % 500 == 0:
-                print(f"  [features] {i+1}/{total} processed ({skipped} skipped)")
+                print(f"  [features] {i+1}/{total} processed ({skipped} skipped: {skipped_short} short + {skipped_shape} shape)")
         except Exception as e:
+            if skipped < 5:
+                print(f"  [features] skip {path}: {type(e).__name__}: {e}")
             skipped += 1
             continue
     if verbose:
-        print(f"  [features] done: {len(feats_list)} ok, {skipped} skipped")
+        print(f"  [features] done: {len(feats_list)} ok, {skipped} skipped ({skipped_short} short + {skipped_shape} shape)")
     if not feats_list:
         return np.zeros((0, 251 * 44), dtype=np.float32), np.zeros((0,), dtype=np.int64)
     feats = np.array(feats_list, dtype=np.float32)
