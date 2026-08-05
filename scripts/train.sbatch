@@ -38,6 +38,15 @@ echo "============================================================"
 # Ensure uv is on PATH (in case the SLURM env doesn't inherit it)
 export PATH="$HOME/.local/bin:$PATH"
 
+# Install uv if missing (idempotent — does nothing if already installed)
+if ! command -v uv &>/dev/null; then
+    echo "uv not found at ~/.local/bin/uv — installing..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    export PATH="$HOME/.local/bin:$PATH"
+fi
+echo "uv location: $(which uv)"
+echo "uv version: $(uv --version)"
+
 # ---- Verify dataset is in place ----
 if [[ ! -f "combined_ser_dataset/metadata.csv" ]]; then
     echo "ERROR: combined_ser_dataset/metadata.csv missing"
