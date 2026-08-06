@@ -175,8 +175,9 @@ def train_ser_model():
     print("🔄 Training SER model (PyTorch)...")
 
     # Load pre-extracted features
-    from feature_utils import ensure_features_exist
-    X, y, labelmap = ensure_features_exist()
+    X, y = ensure_features_exist()
+    # Build a labelmap (sorted set of classes from y)
+    labelmap = {int(c): str(c) for c in sorted(set(y.tolist()))}
 
     Xtr, Xte, ytr, yte = train_test_split(X, y, test_size=0.1, stratify=y, random_state=SEED)
     Xtr, Xva, ytr, yva = train_test_split(Xtr, ytr, test_size=0.111, stratify=ytr, random_state=SEED)
