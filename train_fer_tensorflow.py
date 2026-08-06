@@ -172,10 +172,11 @@ def fer_data_generators():
     return {'orig': train_orig, 'balanced': train_aug, 'val': val, 'weights': weights}
 
 def train_fer_model(model, name, train_gen, val_gen, class_weights, strategy):
-    checkpoint_path = os.path.join(CHECKPOINT_DIR, f"{name}_best.keras")
+    weights_path = os.path.join(CHECKPOINT_DIR, f"{name}_best.weights.h5")
 
-    if os.path.exists(checkpoint_path):
-        print(f"✅ {name} already trained!")
+    if os.path.exists(weights_path):
+        print(f"✅ {name} already trained — loading weights...")
+        model.load_weights(weights_path)
         return
 
     # Multi-GPU: model must be built inside the strategy scope so MirroredStrategy
@@ -187,9 +188,32 @@ def train_fer_model(model, name, train_gen, val_gen, class_weights, strategy):
         # re-compile inside scope.
         model.compile(optimizer=Adam(1e-4), loss='categorical_crossentropy', metrics=['accuracy'])
 
+    # Use save_weights_only=True to avoid Keras 3 JSON serialization issues with
+    # VGG16/ResNet50 Lambda layers (TF 2.15 + Keras 3 compatibility bug).
+    # Also wrap save in a custom callback so a single failure doesn't kill the
+    # entire run — train still saves best weights.
+    class SafeModelCheckpoint(tf.keras.callbacks.Callback):
+        def __init__(self, path, monitor='val_accuracy'):
+            super().__init__()
+            self.path = path
+            self.monitor = monitor
+            self.best = -float('inf')
+        def on_epoch_end(self, epoch, logs=None):
+            logs = logs or {}
+            val = logs.get(self.monitor)
+            if val is None:
+                return
+            if val > self.best:
+                self.best = val
+                try:
+                    self.model.save_weights(self.path)
+                    print(f"\n  ✅ saved best weights (val_accuracy={val:.4f})")
+                except Exception as e:
+                    print(f"\n  ⚠️ save_weights failed: {e}")
+
     callbacks = [
         ReduceLROnPlateau(monitor='val_accuracy', factor=0.4, patience=4, min_lr=1e-7, verbose=1),
-        ModelCheckpoint(checkpoint_path, save_best_only=True, monitor='val_accuracy', verbose=1),
+        SafeModelCheckpoint(weights_path, monitor='val_accuracy'),
         EarlyStopping(monitor='val_accuracy', patience=8, restore_best_weights=True, verbose=1)
     ]
 
