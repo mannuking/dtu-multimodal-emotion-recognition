@@ -47,13 +47,16 @@ class FocalWeightedCE(nn.Module):
 
     def forward(self, logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         # logits: (B, C); target: (B,)
+        # Ensure alpha is on the same device as logits (model may move to GPU
+        # after construction).
+        alpha = self.alpha.to(logits.device)
         log_probs = F.log_softmax(logits, dim=-1)
         probs = log_probs.exp()
         target_oh = F.one_hot(target, num_classes=logits.shape[-1]).float()
         ce = -(target_oh * log_probs)
         p_t = (target_oh * probs).sum(dim=-1)
         focal = (1.0 - p_t).pow(self.gamma)
-        alpha_t = (target_oh * self.alpha).sum(dim=-1)
+        alpha_t = (target_oh * alpha).sum(dim=-1)
         loss = (alpha_t * focal * ce.sum(dim=-1)).mean()
         return loss
 
