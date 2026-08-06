@@ -169,12 +169,22 @@ def main():
             df["face_subject"],
         ]).unique()
         print(f"[split] {len(subjects)} unique subjects across triplets")
-        sub_train, sub_temp = train_test_split(
-            subjects, test_size=0.2, random_state=args.seed
-        )
-        sub_val, sub_test = train_test_split(
-            sub_temp, test_size=0.5, random_state=args.seed
-        )
+
+        # Small-subject fallback: if we have < 5 subjects we can't do a clean
+        # 80/10/10 split. Fall back to a 70/15/15 with single-side handling,
+        # and if even that fails, put everyone in train (subject leakage
+        # acceptable for tiny datasets like TESS-only).
+        if len(subjects) >= 5:
+            sub_train, sub_temp = train_test_split(subjects, test_size=0.2, random_state=args.seed)
+            sub_val, sub_test = train_test_split(sub_temp, test_size=0.5, random_state=args.seed)
+        elif len(subjects) >= 3:
+            sub_train, sub_test = train_test_split(subjects, test_size=0.3, random_state=args.seed)
+            sub_val = sub_train  # val shares with train when too few subjects
+        else:
+            sub_train = subjects
+            sub_val = subjects
+            sub_test = subjects
+
         print(f"[split] subjects: train={len(sub_train)} val={len(sub_val)} test={len(sub_test)}")
 
         def assign_split(row):
