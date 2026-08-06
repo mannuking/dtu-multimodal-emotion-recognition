@@ -1,7 +1,11 @@
-# train_meta_classifier.py - Train meta-classifier combining PyTorch TER + TensorFlow FER/SER
-
 import os
-os.environ['TF_USE_LEGACY_KERAS'] = '1'
+
+os.environ.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
+os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0,1,2,3,4,5,6,7")
+os.environ.setdefault("TF_GPU_ALLOCATOR", "cuda_malloc_async")
+os.environ.setdefault("TF_USE_LEGACY_KERAS", "0")
+
+# train_meta_classifier.py - Train meta-classifier combining PyTorch TER + TensorFlow FER/SER
 
 import numpy as np
 import pandas as pd
@@ -15,7 +19,7 @@ from transformers import MobileBertTokenizer, MobileBertForSequenceClassificatio
 # TensorFlow imports
 import tensorflow as tf
 from keras import layers, Model
-from keras.optimizers.legacy import Adam
+from keras.optimizers import Adam
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 import librosa

@@ -32,10 +32,17 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent
 os.chdir(PROJECT_ROOT)
 
-# Force TF legacy keras (compat with .keras checkpoints saved as HDF5)
-os.environ.setdefault("TF_USE_LEGACY_KERAS", "1")
-os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
+# Force GPU env vars BEFORE importing torch/TF (which loads CUDA)
+os.environ.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
+os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0,1,2,3,4,5,6,7")
+os.environ.setdefault("TF_GPU_ALLOCATOR", "cuda_malloc_async")
+os.environ.setdefault("XLA_FLAGS", "--xla_gpu_cuda_data_dir=/opt/hpcx")
 os.environ.setdefault("PYTHONUNBUFFERED", "1")
+# TF logs get noisy with mixed precision + XLA
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
+# Use the new Keras 3 backend (TF_USE_LEGACY_KERAS=1 breaks modern optimizer/model API)
+os.environ.setdefault("TF_USE_LEGACY_KERAS", "0")
+os.environ.setdefault("KERAS_BACKEND", "tensorflow")
 
 
 def banner(title: str) -> None:

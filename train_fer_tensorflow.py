@@ -1,13 +1,17 @@
 # train_fer_tensorflow.py - Train FER with TensorFlow (your exact architecture)
 
 import os
-os.environ['TF_USE_LEGACY_KERAS'] = '1'
+
+os.environ.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
+os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0,1,2,3,4,5,6,7")
+os.environ.setdefault("TF_GPU_ALLOCATOR", "cuda_malloc_async")
+os.environ.setdefault("TF_USE_LEGACY_KERAS", "0")
 
 import tensorflow as tf
 from keras import layers, Model
 from keras.preprocessing.image import ImageDataGenerator
 from keras.callbacks import ReduceLROnPlateau, ModelCheckpoint, EarlyStopping
-from tf_keras.optimizers.legacy import Adam
+from keras.optimizers import Adam
 from sklearn.utils import class_weight
 import numpy as np
 from gpu_config import *

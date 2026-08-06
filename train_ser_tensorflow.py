@@ -1,13 +1,19 @@
 # train_ser_tensorflow.py - Train SER with TensorFlow (your exact architecture)
 
 import os
-os.environ['TF_USE_LEGACY_KERAS'] = '1'
+
+# Set GPU env vars BEFORE any torch/TF import (CUDA needs them early)
+os.environ.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
+os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0,1,2,3,4,5,6,7")
+os.environ.setdefault("TF_GPU_ALLOCATOR", "cuda_malloc_async")
+os.environ.setdefault("XLA_FLAGS", "--xla_gpu_cuda_data_dir=/opt/hpcx")
+os.environ.setdefault("TF_USE_LEGACY_KERAS", "0")
 
 import tensorflow as tf
 from keras import layers, Model
 from keras.callbacks import ReduceLROnPlateau, ModelCheckpoint, EarlyStopping
-# With TF_USE_LEGACY_KERAS=1 the model lives in tf_keras; optimizer must too.
-from tf_keras.optimizers.legacy import Adam
+# Use the standard tf.keras Adam (modern Keras 3 path, not tf_keras legacy)
+from keras.optimizers import Adam
 from train_utils import focal_weighted_cce, class_weights
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
