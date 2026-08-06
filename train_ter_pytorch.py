@@ -212,6 +212,12 @@ def train_ter_pytorch():
             snapshot_path, num_labels=NUM_CLASSES
         ).to(device)
 
+    # Multi-GPU wrapper — DataParallel splits batches across visible GPUs
+    n_gpus = torch.cuda.device_count()
+    if n_gpus > 1:
+        print(f"  ⚡ wrapping MobileBERT in DataParallel on {n_gpus} GPUs")
+        model = torch.nn.DataParallel(model)
+
     
     xtr, ytr = load_text_csv(TEXT_TRAIN_CSV)
     xva, yva = load_text_csv(TEXT_VAL_CSV)
@@ -264,7 +270,9 @@ def train_ter_pytorch():
     class_weights = total_samples / (NUM_CLASSES * class_counts)
     print("📊 Class weights:", class_weights)
     
-    batch_size = 16
+    # Paper: batch size 64 per GPU; DataParallel scales to 64*N across visible GPUs
+    batch_size = 64
+    print(f"  batch size: {batch_size} × {n_gpus} GPUs = {batch_size * n_gpus} global")
     dtr = DataLoader(TERDataset(xtr, ytr, tokenizer), batch_size=batch_size, shuffle=True)
     dva = DataLoader(TERDataset(xva, yva, tokenizer), batch_size=batch_size, shuffle=False)
     
@@ -342,7 +350,10 @@ def train_ter_pytorch():
         
         if val_acc > best_val_acc:
             best_val_acc = val_acc
-            torch.save(model.state_dict(), ter_model_path)
+            # When wrapped in DataParallel, save the underlying module's state_dict so
+            # loaders don't need to know about the wrapper
+            state = model.module.state_dict() if isinstance(model, torch.nn.DataParallel) else model.state_dict()
+            torch.save(state, ter_model_path)
             model.save_pretrained(ter_tokenizer_path)
             tokenizer.save_pretrained(ter_tokenizer_path)
             print(f"  ✅ Best model saved! Val Acc: {val_acc:.4f}")

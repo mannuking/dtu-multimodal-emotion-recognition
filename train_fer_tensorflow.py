@@ -11,50 +11,65 @@ from keras.optimizers import Adam
 from sklearn.utils import class_weight
 import numpy as np
 from gpu_config import *
+from gpu_runtime import enable_tf_perf, set_seed
+
+# Perf runtime: mixed precision + XLA + multi-GPU MirroredStrategy
+STRATEGY = enable_tf_perf()
+set_seed(SEED)
 
 tf.random.set_seed(SEED)
 
-def build_vgg16_model(input_shape=(224,224,3), num_classes=NUM_CLASSES, pretrained=False):
+def build_vgg16_model(input_shape=(224,224,1), num_classes=NUM_CLASSES, pretrained=False):
+    """Paper Sec 5.3: VGG16 fine-tuned for FER on grayscale 224x224.
+    input_shape defaults to (224,224,1) for grayscale; VGG16 expects 3 channels
+    so we replicate the grayscale channel to 3 inside the model (cheap op)."""
     base = tf.keras.applications.VGG16(
         include_top=False,
         weights='imagenet' if pretrained else None,
-        input_shape=input_shape
+        input_shape=(224, 224, 3),
     )
-    
+
     if pretrained:
         for l in base.layers[:-8]:
             l.trainable = False
-    
-    x = layers.GlobalAveragePooling2D()(base.output)
-    x = layers.Flatten()(x)
+
+    I = layers.Input(shape=input_shape)
+    # replicate grayscale channel to 3 for VGG16
+    x = layers.Concatenate()([I, I, I]) if input_shape[-1] == 1 else I
+    x = base(x)
+    x = layers.GlobalAveragePooling2D()(x)
     x = layers.Dense(1024, activation='relu')(x)
     x = layers.Dropout(0.5)(x)
     x = layers.Dense(512, activation='relu')(x)
     x = layers.Dropout(0.3)(x)
     out = layers.Dense(num_classes, activation='softmax')(x)
-    
-    return Model(base.input, out)
 
-def build_resnet50_model(input_shape=(224,224,3), num_classes=NUM_CLASSES, pretrained=False):
+    return Model(I, out)
+
+
+def build_resnet50_model(input_shape=(224,224,1), num_classes=NUM_CLASSES, pretrained=False):
+    """Paper Sec 5.3: ResNet50 fine-tuned for FER on grayscale 224x224."""
     base = tf.keras.applications.ResNet50(
         include_top=False,
         weights='imagenet' if pretrained else None,
-        input_shape=input_shape
+        input_shape=(224, 224, 3),
     )
-    
+
     if pretrained:
         for l in base.layers[:-10]:
             l.trainable = False
-    
-    x = layers.GlobalAveragePooling2D()(base.output)
-    x = layers.Flatten()(x)
+
+    I = layers.Input(shape=input_shape)
+    x = layers.Concatenate()([I, I, I]) if input_shape[-1] == 1 else I
+    x = base(x)
+    x = layers.GlobalAveragePooling2D()(x)
     x = layers.Dense(2048, activation='relu')(x)
     x = layers.Dropout(0.5)(x)
     x = layers.Dense(1024, activation='relu')(x)
     x = layers.Dropout(0.5)(x)
     out = layers.Dense(num_classes, activation='softmax')(x)
-    
-    return Model(base.input, out)
+
+    return Model(I, out)
 
 def generate_synthetic_fer_data(train_dir=FER_TRAIN_DIR, test_dir=FER_TEST_DIR, num_per_class=200):
     """Generate synthetic face images for FER training when fer2013 is missing.
@@ -98,9 +113,18 @@ def generate_synthetic_fer_data(train_dir=FER_TRAIN_DIR, test_dir=FER_TEST_DIR, 
 
 
 def fer_data_generators():
-    # If fer2013/ is missing on disk, generate synthetic face data
+    # If fer2013/ is missing on disk, try to download from HuggingFace first
     if not os.path.exists(FER_TRAIN_DIR) or not os.path.exists(FER_TEST_DIR):
-        print(f"  [FER] {FER_TRAIN_DIR} missing — generating synthetic face data...")
+        print(f"  [FER] {FER_TRAIN_DIR} missing — attempting download from HuggingFace...")
+        try:
+            from fer2013_download import download_and_unpack
+            download_and_unpack()
+        except Exception as e:
+            print(f"  [FER] download failed ({e}); falling back to synthetic data")
+            generate_synthetic_fer_data()
+    # If still missing (download failed / no network), synthetic fallback
+    if not os.path.exists(FER_TRAIN_DIR) or not os.path.exists(FER_TEST_DIR):
+        print(f"  [FER] still missing — generating synthetic face data...")
         generate_synthetic_fer_data()
 
     aug = ImageDataGenerator(
@@ -109,24 +133,27 @@ def fer_data_generators():
         width_shift_range=0.1,
         height_shift_range=0.1,
         zoom_range=0.2,
-        horizontal_flip=True
+        horizontal_flip=True,
+        brightness_range=[0.8, 1.2],
+        fill_mode='nearest',
     )
 
     no_aug = ImageDataGenerator(rescale=1./255)
     test_gen = ImageDataGenerator(rescale=1./255)
-    
+
+    # Paper Sec 5.3: grayscale 224x224 (model now expects 1 channel)
     train_orig = no_aug.flow_from_directory(
-        FER_TRAIN_DIR, target_size=IMG_SIZE, color_mode='rgb',
+        FER_TRAIN_DIR, target_size=IMG_SIZE, color_mode='grayscale',
         batch_size=32, class_mode='categorical', shuffle=True, seed=SEED
     )
-    
+
     train_aug = aug.flow_from_directory(
-        FER_TRAIN_DIR, target_size=IMG_SIZE, color_mode='rgb',
+        FER_TRAIN_DIR, target_size=IMG_SIZE, color_mode='grayscale',
         batch_size=32, class_mode='categorical', shuffle=True, seed=SEED
     )
-    
+
     val = test_gen.flow_from_directory(
-        FER_TEST_DIR, target_size=IMG_SIZE, color_mode='rgb',
+        FER_TEST_DIR, target_size=IMG_SIZE, color_mode='grayscale',
         batch_size=32, class_mode='categorical', shuffle=False
     )
     
@@ -137,21 +164,28 @@ def fer_data_generators():
     
     return {'orig': train_orig, 'balanced': train_aug, 'val': val, 'weights': weights}
 
-def train_fer_model(model, name, train_gen, val_gen, class_weights):
+def train_fer_model(model, name, train_gen, val_gen, class_weights, strategy):
     checkpoint_path = os.path.join(CHECKPOINT_DIR, f"{name}_best.keras")
-    
+
     if os.path.exists(checkpoint_path):
         print(f"✅ {name} already trained!")
         return
-    
-    model.compile(optimizer=Adam(1e-4), loss='categorical_crossentropy', metrics=['accuracy'])
-    
+
+    # Multi-GPU: model must be built inside the strategy scope so MirroredStrategy
+    # can replicate it across GPUs. Caller passes the bare model; we re-build here.
+    with strategy.scope():
+        # Rebuild inside scope (model is already constructed outside — recreate
+        # by re-instantiating to be safe). For FER we keep the inputs simple so
+        # re-creation is just a function call from the caller side; here we just
+        # re-compile inside scope.
+        model.compile(optimizer=Adam(1e-4), loss='categorical_crossentropy', metrics=['accuracy'])
+
     callbacks = [
         ReduceLROnPlateau(monitor='val_accuracy', factor=0.4, patience=4, min_lr=1e-7, verbose=1),
         ModelCheckpoint(checkpoint_path, save_best_only=True, monitor='val_accuracy', verbose=1),
         EarlyStopping(monitor='val_accuracy', patience=8, restore_best_weights=True, verbose=1)
     ]
-    
+
     model.fit(
         train_gen,
         steps_per_epoch=train_gen.samples // train_gen.batch_size,
@@ -162,25 +196,32 @@ def train_fer_model(model, name, train_gen, val_gen, class_weights):
         class_weight=class_weights,
         verbose=1
     )
-    
+
     print(f"✅ {name} training complete!")
 
 def train_fer_models():
     print("🚀 Starting FER model training...")
-    
+
     gens = fer_data_generators()
-    
+
+    # Build models INSIDE the strategy scope so MirroredStrategy replicates them
+    with STRATEGY.scope():
+        vgg16_o = build_vgg16_model()
+        vgg16_b = build_vgg16_model()
+        resnet_o = build_resnet50_model()
+        resnet_b = build_resnet50_model()
+
     configs = [
-        ("vgg16_orig", build_vgg16_model(), "orig"),
-        ("vgg16_bal", build_vgg16_model(), "balanced"),
-        ("resnet50_orig", build_resnet50_model(), "orig"),
-        ("resnet50_bal", build_resnet50_model(), "balanced")
+        ("vgg16_orig", vgg16_o, "orig"),
+        ("vgg16_bal",  vgg16_b, "balanced"),
+        ("resnet50_orig", resnet_o, "orig"),
+        ("resnet50_bal",  resnet_b, "balanced"),
     ]
-    
+
     for model_name, model, gen_type in configs:
-        print(f"\n🔄 Training {model_name}...")
-        train_fer_model(model, model_name, gens[gen_type], gens['val'], gens['weights'])
-    
+        print(f"\n🔄 Training {model_name} on {STRATEGY.num_replicas_in_sync} GPU(s)...")
+        train_fer_model(model, model_name, gens[gen_type], gens['val'], gens['weights'], STRATEGY)
+
     print("✅ FER training complete!")
 
 if __name__ == "__main__":

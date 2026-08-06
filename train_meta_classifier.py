@@ -21,6 +21,11 @@ from sklearn.model_selection import train_test_split
 import librosa
 
 from gpu_config import *
+from gpu_runtime import enable_tf_perf, set_seed
+
+# Perf runtime: mixed precision + XLA + multi-GPU MirroredStrategy
+STRATEGY = enable_tf_perf()
+set_seed(SEED)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -372,13 +377,14 @@ def train_meta_classifier():
     Xtr, Xte, ytr, yte = train_test_split(X, y_true, test_size=0.2, stratify=y_true, random_state=SEED)
     Xtr, Xva, ytr, yva = train_test_split(Xtr, ytr, test_size=0.2, stratify=ytr, random_state=SEED)
 
-    # Build and compile
-    meta_model = build_meta_classifier(input_dim=X.shape[1])
-    meta_model.compile(
-        optimizer=Adam(1e-3),
-        loss='sparse_categorical_crossentropy',
-        metrics=['accuracy']
-    )
+    # Build + compile inside strategy.scope() so MirroredStrategy can replicate it
+    with STRATEGY.scope():
+        meta_model = build_meta_classifier(input_dim=X.shape[1])
+        meta_model.compile(
+            optimizer=Adam(1e-3),
+            loss='sparse_categorical_crossentropy',
+            metrics=['accuracy']
+        )
 
     # Callbacks
     callbacks = [

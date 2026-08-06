@@ -6,14 +6,20 @@ os.environ['TF_USE_LEGACY_KERAS'] = '1'
 import tensorflow as tf
 from keras import layers, Model
 from keras.callbacks import ReduceLROnPlateau, ModelCheckpoint, EarlyStopping
-from keras.optimizers import Adam
+from tensorflow.keras.optimizers import Adam
+from train_utils import focal_weighted_cce, class_weights
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 import numpy as np
 import pickle
 import librosa
 from gpu_config import *
+from gpu_runtime import enable_tf_perf, set_seed, global_batch_size
 from feature_utils import ensure_features_exist, EMOTION_ORDER_LOWER
+
+# Initialize perf runtime + strategy (mixed precision, XLA, multi-GPU)
+STRATEGY = enable_tf_perf()
+set_seed(SEED)
 
 tf.random.set_seed(SEED)
 
@@ -105,17 +111,54 @@ def train_ser_model():
     
     Xtr, Xte, ytr, yte = train_test_split(X, y, test_size=0.1, stratify=y, random_state=SEED)
     Xtr, Xva, ytr, yva = train_test_split(Xtr, ytr, test_size=0.111, stratify=ytr, random_state=SEED)
-    
-    model = build_ser_1d_cnn((X.shape[1], 1))
-    model.compile(optimizer=Adam(1e-3), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
-    
+
+    # Paper Sec 5.1: focal weighted categorical cross-entropy with class-frequency alpha
+    alpha = np.array([class_weights(y).get(int(c), 1.0) for c in range(NUM_CLASSES)], dtype=np.float32)
+
+    # Multi-GPU: build + compile inside strategy.scope(). MirroredStrategy
+    # splits batches across GPUs automatically.
+    with STRATEGY.scope():
+        model = build_ser_1d_cnn((X.shape[1], 1))
+        model.compile(
+            optimizer=Adam(1e-3),
+            loss=focal_weighted_cce(alpha, gamma=2.0),
+            metrics=['accuracy'],
+        )
+
     callbacks = [
-        ReduceLROnPlateau(monitor='val_accuracy', patience=3, factor=0.1, min_lr=1e-5),
+        # Paper: ReduceLROnPlateau patience=2, factor=0.5
+        ReduceLROnPlateau(monitor='val_accuracy', patience=2, factor=0.5, min_lr=1e-5),
+        # Paper: early stopping patience 4-8
         EarlyStopping(monitor='val_accuracy', patience=6, restore_best_weights=True),
-        ModelCheckpoint(ser_checkpoint_path, save_best_only=True, monitor='val_accuracy', verbose=1)
+        ModelCheckpoint(ser_checkpoint_path, save_best_only=True, monitor='val_accuracy', verbose=1),
     ]
-    
-    model.fit(Xtr, ytr, validation_data=(Xva, yva), epochs=50, batch_size=32, callbacks=callbacks, verbose=1)
+
+    # Paper: batch size 64, epochs 30-50. Audio augmentation (noise + gain) applied
+    # on the tf.data pipeline. Pre-extracted features are augmented in-graph.
+    # Paper: batch size 64 per replica; multi-GPU auto-scales to 64*N.
+    print("   audio augmentation enabled (noise + gain, paper Sec 5.1)")
+    per_replica_bs = 64
+    batch_size = global_batch_size(per_replica_bs, STRATEGY)
+    print(f"   per-replica batch: {per_replica_bs}  ×  {STRATEGY.num_replicas_in_sync} GPUs  =  {batch_size} global")
+    def aug(x, y):
+        noise = tf.random.normal(tf.shape(x), stddev=0.005, dtype=x.dtype)
+        gain = tf.random.uniform([], 0.85, 1.15, dtype=x.dtype)
+        return x * gain + noise, y
+    train_ds = (
+        tf.data.Dataset.from_tensor_slices((Xtr, ytr))
+        .shuffle(8192)
+        .batch(batch_size)
+        .map(aug, num_parallel_calls=tf.data.AUTOTUNE)
+        .prefetch(tf.data.AUTOTUNE)
+    )
+
+    model.fit(
+        train_ds,
+        validation_data=(Xva, yva),
+        epochs=50,
+        callbacks=callbacks,
+        verbose=1,
+    )
     
     with open(ser_encoder_path, 'wb') as f:
         pickle.dump(labelmap, f)
