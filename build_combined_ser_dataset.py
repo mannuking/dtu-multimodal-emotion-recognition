@@ -211,9 +211,16 @@ def main():
         with open(out_csv) as f:
             reader = csv.DictReader(f)
             for row in reader:
-                # Normalize schema: older manifests may use 'filepath'
+                # Normalize schema: older manifests may use 'filepath' instead of
+                # 'wav_path' and 'original_dataset' instead of 'dataset'
                 if "filepath" in row and "wav_path" not in row:
                     row["wav_path"] = row.pop("filepath")
+                if "original_dataset" in row and "dataset" not in row:
+                    row["dataset"] = row.pop("original_dataset")
+                # Backfill missing fields with empty defaults so CSV DictWriter
+                # doesn't reject mismatched schemas during merge
+                for col in ("wav_path", "emotion", "dataset", "subject", "gender"):
+                    row.setdefault(col, "")
                 existing.append(row)
         print(f"  existing manifest: {len(existing)} rows (will merge in new samples)")
 
