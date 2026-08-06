@@ -175,6 +175,9 @@ def train_ser_model():
     ser_checkpoint_path = os.path.join(CHECKPOINT_DIR, "ser_best.pt")
     ser_encoder_path = os.path.join(CHECKPOINT_DIR, "ser_label_encoder.pkl")
 
+    # Ensure checkpoint dir exists (HPC sandbox may not auto-create)
+    os.makedirs(CHECKPOINT_DIR, exist_ok=True)
+
     if os.path.exists(ser_checkpoint_path) and os.path.exists(ser_encoder_path):
         print("✅ SER model already trained!")
         return
