@@ -46,12 +46,30 @@ class MetaMLP(nn.Module):
 
 
 def load_ter_model(device):
-    """Load PyTorch TER (MobileBERT)."""
+    """Load PyTorch TER (MobileBERT). Falls back through known tokenizer paths."""
     from transformers import MobileBertTokenizer, MobileBertForSequenceClassification
     ter_path = os.path.join(CHECKPOINT_DIR, "ter_best.pt")
-    ter_tok_path = os.path.join(CHECKPOINT_DIR, "ter_tokenizer")
+    # The actual tokenizer is saved at ter_pytorch_tokenizer by train_ter_pytorch.py;
+    # older pipeline used ter_tokenizer. Try both, plus the fresh download path.
+    candidate_paths = [
+        os.path.join(CHECKPOINT_DIR, "ter_pytorch_tokenizer"),
+        os.path.join(CHECKPOINT_DIR, "ter_tokenizer"),
+        "mobilebert_pytorch",
+    ]
+    ter_tok_path = None
+    for p in candidate_paths:
+        if os.path.exists(p) and os.path.isdir(p) and os.path.exists(os.path.join(p, "config.json")):
+            ter_tok_path = p
+            break
+    if ter_tok_path is None:
+        raise FileNotFoundError(
+            f"Could not find TER tokenizer. Looked at: {candidate_paths}. "
+            "Run train_ter_pytorch.py first to download/extract MobileBERT."
+        )
+    print(f"      TER tokenizer: {ter_tok_path}")
     model = MobileBertForSequenceClassification.from_pretrained(ter_tok_path, num_labels=NUM_CLASSES)
-    model.load_state_dict(torch.load(ter_path, map_location=device))
+    state = torch.load(ter_path, map_location=device, weights_only=True)
+    model.load_state_dict(state)
     model.to(device).eval()
     return model
 
@@ -160,7 +178,7 @@ def train_meta_classifier():
     print("2️⃣ TER predictions (PyTorch)...")
     from transformers import MobileBertTokenizer
     ter_model = load_ter_model(device)
-    tokenizer = MobileBertTokenizer.from_pretrained(os.path.join(CHECKPOINT_DIR, "ter_tokenizer"))
+    tokenizer = MobileBertTokenizer.from_pretrained(ter_model.config._name_or_path)
     texts = [synth_text_from_emotion(e) for e in df["label"].tolist()]
     ter_probs = get_ter_probs(ter_model, tokenizer, texts, device)
     del ter_model

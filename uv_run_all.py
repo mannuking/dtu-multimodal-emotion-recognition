@@ -140,7 +140,7 @@ def main():
     run([sys.executable, "train_meta_classifier_pytorch.py"], "Train meta-classifier (late fusion MLP, PyTorch)")
 
     # 6. Integrity test
-    ser_verified = run([sys.executable, "verify_ser.py"], "Run integrity test on SER")
+    ser_verified = run([sys.executable, "verify_ser_pytorch.py"], "Run integrity test on SER (PyTorch)")
 
     # 7. Summary
     banner("Pipeline summary")

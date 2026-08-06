@@ -1,36 +1,32 @@
 """
-verify_ser.py — Integrity test for the SER (Speech Emotion Recognition) component.
+verify_ser_pytorch.py — Integrity test for the PyTorch SER (1D-CNN).
 
-Loads the trained SER checkpoint (ser_best.keras) + label encoder, applies the same
-preprocessing used during training (MFCC-40 + ZCR + RMS + energy + entropy, 11,044
-features per sample), runs inference on a stratified held-out test split that
-mirrors the training protocol (SEED=42, 80/10/20 stratified), and reports real
-metrics against ground-truth labels from the combined SER corpus.
+Loads the trained SER checkpoint (ser_best.pt) + label encoder, runs
+inference on a stratified held-out test split (SEED=42, 80/10/20), and
+reports real metrics against ground-truth labels from the combined SER
+corpus.
 
-This is NOT retraining. The checkpoints are loaded as-is and evaluated on real
-test data drawn from the same combined dataset used in the manuscript.
+This is NOT retraining. The checkpoints are loaded as-is and evaluated on
+real test data drawn from the same combined dataset used in the manuscript.
 """
+
 import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-os.environ['TF_USE_LEGACY_KERAS'] = '1'
-
-import warnings
-warnings.filterwarnings('ignore')
-
 import sys
 import json
 import time
 import pickle
+import warnings
+
 import numpy as np
 import pandas as pd
 import librosa
-import tensorflow as tf
-tf.get_logger().setLevel('ERROR')
-from keras import layers, Model
+import torch
+import torch.nn.functional as F
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, f1_score, confusion_matrix, classification_report
 
-# ---- Configuration (matches train_ser_tensorflow.py + config.py) ----
+warnings.filterwarnings("ignore")
+
 SEED = 42
 NUM_CLASSES = 7
 EMOTION_ORDER = ["Angry", "Disgust", "Fear", "Happy", "Sad", "Surprise", "Neutral"]
@@ -43,7 +39,7 @@ SER_COMBINED_DIR = "combined_ser_dataset"
 
 
 def trim_silence(audio, thresh_scale=3):
-    """Same silence-trimming function used in train_meta_classifier.py"""
+    """Match the training-time pipeline."""
     frame_length = 2048
     hop = 512
     rms = librosa.feature.rms(y=audio, frame_length=frame_length, hop_length=hop)[0]
@@ -59,7 +55,7 @@ def trim_silence(audio, thresh_scale=3):
 
 
 def preprocess_audio(file_path):
-    """Match the training-time pipeline exactly."""
+    """Match training-time preprocessing."""
     y, sr = librosa.load(file_path, sr=TARGET_SR)
     y = trim_silence(y)
     y = y[int(OFFSET_S * sr):]
@@ -73,9 +69,10 @@ def preprocess_audio(file_path):
 
 def extract_features(y, sr=TARGET_SR, n_mfcc=40):
     """
-    Reverse-engineered from the saved features-001.npy (11,044 dims per sample).
-    Training-time params: hop=192 samples (12 ms), win=400 samples (25 ms).
-    This yields 251 frames × 44 features (ZCR + RMS + energy + entropy + MFCC40) = 11,044.
+    Match training-time features:
+    - hop=192 samples (12 ms), win=400 samples (25 ms)
+    - ZCR + RMS + energy + entropy + MFCC40 = 44 features/frame
+    - 251 frames × 44 = 11,044 dims per sample
     """
     hop = 192
     win = 400
@@ -89,77 +86,50 @@ def extract_features(y, sr=TARGET_SR, n_mfcc=40):
     return feats.flatten()
 
 
-def build_ser_1d_cnn(input_shape, num_classes=NUM_CLASSES):
-    """Match train_ser_tensorflow.build_ser_1d_cnn exactly."""
-    I = layers.Input(shape=input_shape)
-    x = layers.Conv1D(256, 5, padding='same')(I)
-    x = layers.BatchNormalization()(x)
-    x = layers.ReLU()(x)
-    x = layers.MaxPooling1D(5, 2, 'same')(x)
-    x = layers.Conv1D(256, 5, padding='same')(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.ReLU()(x)
-    x = layers.MaxPooling1D(5, 2, 'same')(x)
-    x = layers.Conv1D(512, 5, padding='same')(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.ReLU()(x)
-    x = layers.MaxPooling1D(5, 2, 'same')(x)
-    x = layers.Conv1D(512, 3, padding='same')(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.ReLU()(x)
-    x = layers.MaxPooling1D(5, 2, 'same')(x)
-    x = layers.Conv1D(256, 3, padding='same')(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.ReLU()(x)
-    x = layers.MaxPooling1D(5, 2, 'same')(x)
-    x = layers.Conv1D(256, 3, padding='same')(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.ReLU()(x)
-    x = layers.MaxPooling1D(5, 2, 'same')(x)
-    x = layers.Conv1D(128, 3, padding='same')(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.ReLU()(x)
-    x = layers.MaxPooling1D(5, 2, 'same')(x)
-    x = layers.Conv1D(128, 3, padding='same')(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.ReLU()(x)
-    x = layers.MaxPooling1D(5, 2, 'same')(x)
-    x = layers.Conv1D(64, 3, padding='same')(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.ReLU()(x)
-    x = layers.MaxPooling1D(3, 2, 'same')(x)
-    x = layers.Flatten()(x)
-    x = layers.Dense(512, activation='relu')(x)
-    out = layers.Dense(num_classes, activation='softmax')(x)
-    return Model(I, out)
+def load_ser_model(device, in_len=11044, num_classes=7):
+    """Load the PyTorch SER 1D-CNN."""
+    from train_ser_pytorch import SER1DCNN
+    ser_path = os.path.join(CHECKPOINT_DIR, "ser_best.pt")
+    if not os.path.exists(ser_path):
+        print(f"      ❌ SER checkpoint not found at {ser_path}")
+        sys.exit(1)
+    model = SER1DCNN(in_len=in_len, num_classes=num_classes).to(device)
+    state = torch.load(ser_path, map_location=device, weights_only=True)
+    model.load_state_dict(state)
+    model.eval()
+    return model
 
 
 def main():
     print("=" * 70)
-    print("SER INTEGRITY TEST — verifying the trained 1D-CNN on real audio")
+    print("SER INTEGRITY TEST — verifying the PyTorch 1D-CNN on real audio")
     print("=" * 70)
-    print(f"TensorFlow: {tf.__version__}")
-    print(f"Librosa:    {librosa.__version__}")
-    print(f"Seed:       {SEED}")
+    print(f"PyTorch:     {torch.__version__}")
+    print(f"Librosa:     {librosa.__version__}")
+    print(f"Seed:        {SEED}")
     print()
 
     # 1. Load the manifest
     print("[1/5] Loading combined_ser_dataset/metadata.csv ...")
     df = pd.read_csv(os.path.join(SER_COMBINED_DIR, "metadata.csv"))
+    # Normalize column name
+    if "filepath" not in df.columns and "wav_path" in df.columns:
+        df = df.rename(columns={"wav_path": "filepath"})
+    if "filepath" not in df.columns:
+        print(f"      ❌ Manifest needs 'filepath' or 'wav_path' column. Found: {list(df.columns)}")
+        sys.exit(1)
     print(f"      Total samples in manifest: {len(df)}")
     print(f"      Class distribution:\n{df['emotion'].value_counts().to_string()}\n")
 
-    # 2. Build the 80/10/20 stratified split (matches train_ser_tensorflow.py exactly)
+    # 2. Build the 80/10/20 stratified split
     print("[2/5] Building stratified 80/10/20 split with SEED=42 ...")
     label_map = {e: i for i, e in enumerate(EMOTION_ORDER_LOWER)}
-    y_all = df['emotion'].str.lower().map(label_map).values
-    X_paths = df['filepath'].values
+    y_all = df["emotion"].str.lower().map(label_map).values
+    X_paths = df["filepath"].values
 
-    # First split: 90/10 (train+val / test)
     Xtv, Xte, ytv, yte = train_test_split(
         X_paths, y_all, test_size=0.10, stratify=y_all, random_state=SEED
     )
-    # Second split: 80/10/20 of original (val = 11.1% of train+val = 10% of total)
     Xtr, Xva, ytr, yva = train_test_split(
         list(Xtv), list(ytv), test_size=0.111, stratify=ytv, random_state=SEED
     )
@@ -167,39 +137,38 @@ def main():
     print(f"      Test class counts: {dict(zip(*np.unique(yte, return_counts=True)))}\n")
 
     # 3. Load trained SER checkpoint
-    print("[3/5] Loading ser_best.keras checkpoint ...")
-    ser_path = os.path.join(CHECKPOINT_DIR, "ser_best.keras")
-    enc_path = os.path.join(CHECKPOINT_DIR, "ser_label_encoder.pkl")
-
+    print("[3/5] Loading ser_best.pt checkpoint (PyTorch) ...")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"      Device: {device}")
+    ser_path = os.path.join(CHECKPOINT_DIR, "ser_best.pt")
     if not os.path.exists(ser_path):
         print(f"      ❌ SER checkpoint not found at {ser_path}")
         sys.exit(1)
-
-    # Load architecture + weights from the .keras file.
-    # NOTE: The file is HDF5 format saved with a .keras extension (legacy Keras).
-    # load_model() works correctly with compile=False in that case; using
-    # build()+load_weights() leaves BN moving stats un-initialised and the
-    # model outputs random "surprise" for every input.
-    model = tf.keras.models.load_model(ser_path, compile=False)
-    print(f"      ✅ Loaded {os.path.getsize(ser_path)/1024/1024:.1f} MB model")
-    print(f"      Model input shape: {model.input_shape}")
-    print(f"      Model output shape: {model.output_shape}\n")
+    model = load_ser_model(device)
+    size_mb = os.path.getsize(ser_path) / 1024 / 1024
+    print(f"      ✅ Loaded {size_mb:.1f} MB model")
 
     # 4. Run inference on the test set
-    print("[4/5] Running inference on test split ({} samples) ...".format(len(Xte)))
+    print(f"[4/5] Running inference on test split ({len(Xte)} samples) ...")
     preds = []
     probs_all = []
     t0 = time.time()
     failed = 0
 
     for i, (rel_path, y_true) in enumerate(zip(Xte, yte)):
-        full_path = os.path.join(SER_COMBINED_DIR, rel_path)
+        # Build full path — handle both absolute paths and relative paths
+        if os.path.isabs(rel_path):
+            full_path = rel_path
+        else:
+            full_path = os.path.join(SER_COMBINED_DIR, rel_path)
         try:
             y_audio = preprocess_audio(full_path)
-            feats = extract_features(y_audio).reshape(1, -1, 1).astype(np.float32)
-            if feats.shape[1] != 11044:
-                raise ValueError(f"feature shape {feats.shape} != (1, 11044, 1)")
-            probs = model.predict(feats, verbose=0)[0]
+            feats = extract_features(y_audio)
+            if len(feats) != 11044:
+                raise ValueError(f"feature length {len(feats)} != 11044")
+            x = torch.as_tensor(feats, dtype=torch.float32).view(1, 1, -1).to(device)
+            with torch.no_grad():
+                probs = F.softmax(model(x), dim=-1).cpu().numpy()[0]
             preds.append(int(np.argmax(probs)))
             probs_all.append(probs.tolist())
         except Exception as e:
@@ -209,7 +178,7 @@ def main():
             preds.append(-1)
             probs_all.append([0.0] * NUM_CLASSES)
 
-        if (i + 1) % 200 == 0:
+        if (i + 1) % 50 == 0:
             elapsed = time.time() - t0
             rate = (i + 1) / elapsed
             eta = (len(Xte) - i - 1) / rate
@@ -225,14 +194,13 @@ def main():
     yte = np.array(yte)
     mask = preds != -1
     acc = accuracy_score(yte[mask], preds[mask])
-    macro_f1 = f1_score(yte[mask], preds[mask], average='macro')
-    weighted_f1 = f1_score(yte[mask], preds[mask], average='weighted')
+    macro_f1 = f1_score(yte[mask], preds[mask], average="macro")
+    weighted_f1 = f1_score(yte[mask], preds[mask], average="weighted")
     cm = confusion_matrix(yte[mask], preds[mask], labels=list(range(NUM_CLASSES)))
 
     print(f"      Accuracy:           {acc:.4f}  ({acc*100:.2f}%)")
     print(f"      Macro F1:           {macro_f1:.4f}")
-    print(f"      Weighted F1:        {weighted_f1:.4f}")
-    print()
+    print(f"      Weighted F1:        {weighted_f1:.4f}\n")
     print("      Per-class report:")
     print(classification_report(
         yte[mask], preds[mask],
@@ -247,7 +215,7 @@ def main():
 
     # 6. Persist results
     out = {
-        "model": "SER (1D-CNN)",
+        "model": "SER (PyTorch 1D-CNN)",
         "checkpoint": ser_path,
         "test_samples": int(len(Xte)),
         "failed": int(failed),
@@ -267,6 +235,7 @@ def main():
         "paper_claim_macro_f1": 0.73,
         "delta_accuracy": round(float(acc) - 0.8009, 4),
     }
+    os.makedirs("reports", exist_ok=True)
     with open("reports/ser_verification.json", "w") as f:
         json.dump(out, f, indent=2)
 
