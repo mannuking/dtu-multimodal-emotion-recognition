@@ -128,7 +128,7 @@ def main():
         sys.exit(1)
 
     # 2. Train SER
-    run([sys.executable, "train_ser_tensorflow.py"], "Train SER (1D-CNN over MFCC + energy features)")
+    run([sys.executable, "train_ser_pytorch.py"], "Train SER (1D-CNN over MFCC + energy features, PyTorch)")
 
     # 3. Train TER (PyTorch + MobileBERT)
     run([sys.executable, "train_ter_pytorch.py"], "Train TER (MobileBERT + FGSM adversarial)")
@@ -137,7 +137,7 @@ def main():
     run([sys.executable, "train_fer_tensorflow.py"], "Train FER (VGG16 + ResNet50 ensemble)")
 
     # 5. Train meta-classifier
-    run([sys.executable, "train_meta_classifier.py"], "Train meta-classifier (late fusion MLP)")
+    run([sys.executable, "train_meta_classifier_pytorch.py"], "Train meta-classifier (late fusion MLP, PyTorch)")
 
     # 6. Integrity test
     ser_verified = run([sys.executable, "verify_ser.py"], "Run integrity test on SER")
