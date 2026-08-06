@@ -74,4 +74,8 @@ reports/preview_*.png
 
 # --- Jupyter ---
 .ipynb_checkpoints/
-*.ipynb_checkpoints/
+*.ipynb_checkpoints/tess_wavs/
+
+# TESS dataset (regeneratable from Kaggle download)
+tess_wavs/
+tess_kaggle.zip
