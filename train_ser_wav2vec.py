@@ -123,22 +123,24 @@ class FocalWeightedCE(nn.Module):
 
 # ===== Audio loading (from manifest) =====
 
-def load_audio_from_manifest(manifest_csv: str, sample_rate: int = 16000, max_seconds: float = 6.0):
+def load_audio_from_manifest(manifest_csv: str, sample_rate: int = 16000, max_seconds: float = 6.0, base_dir: str = "combined_ser_dataset"):
     """Read manifest, load all audio files into memory at 16 kHz mono.
+
+    Manifest rows have 'wav_path' OR 'filepath'. Paths are resolved relative
+    to base_dir so a manifest entry like 'angry/123.wav' resolves to
+    combined_ser_dataset/angry/123.wav.
 
     Returns:
         audio_list: list of np.ndarray (T,) float32
         labels: list of int
         label_encoder: fitted LabelEncoder
-        paths: list of wav file paths
+        paths: list of wav file paths (absolute)
     """
     import pandas as pd
     df = pd.read_csv(manifest_csv)
     # Normalize column names
     if "wav_path" not in df.columns and "filepath" in df.columns:
         df = df.rename(columns={"filepath": "wav_path"})
-    if "emotion" not in df.columns and "label" in df.columns:
-        df = df.rename(columns={"label": "emotion"})
 
     df["emotion"] = df["emotion"].astype(str).str.lower()
     df = df[df["emotion"].isin(EMOTION_ORDER_LOWER)].reset_index(drop=True)
@@ -151,9 +153,14 @@ def load_audio_from_manifest(manifest_csv: str, sample_rate: int = 16000, max_se
     audio_list = []
     valid_labels = []
     valid_paths = []
+    skipped = 0
     for i, row in df.iterrows():
-        path = row["wav_path"]
+        path = str(row["wav_path"])
+        # Resolve relative paths against base_dir
+        if not os.path.isabs(path):
+            path = os.path.join(base_dir, path)
         if not os.path.exists(path):
+            skipped += 1
             continue
         try:
             y, sr = librosa.load(path, sr=sample_rate, mono=True)
@@ -169,8 +176,10 @@ def load_audio_from_manifest(manifest_csv: str, sample_rate: int = 16000, max_se
             valid_labels.append(labels[i])
             valid_paths.append(path)
         except Exception as e:
-            print(f"  skip {path}: {e}")
+            skipped += 1
 
+    if skipped > 0:
+        print(f"   skipped {skipped} files (missing or unreadable)")
     return audio_list, np.array(valid_labels), label_encoder, valid_paths
 
 
@@ -237,6 +246,12 @@ def train_ser_model():
     audio_list, labels, label_encoder, paths = load_audio_from_manifest(manifest_csv)
     num_classes = len(label_encoder.classes_)
     print(f"   {len(audio_list)} samples, {num_classes} classes: {list(label_encoder.classes_)}")
+
+    if len(audio_list) < 1000:
+        print(f"\n   \u26a0\ufe0f  Only {len(audio_list)} samples loaded (expected 11,000+).")
+        print(f"   Check that combined_ser_dataset/ has wav files in subfolders,")
+        print(f"   or that metadata.csv paths point to actual files.")
+        print(f"   First 3 paths: {paths[:3] if paths else 'NONE'}")
 
     # ---- Train/val/test split (stratified, subject-disjoint best-effort) ----
     indices = np.arange(len(audio_list))
