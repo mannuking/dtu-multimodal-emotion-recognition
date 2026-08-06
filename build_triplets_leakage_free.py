@@ -170,16 +170,22 @@ def main():
         ]).unique()
         print(f"[split] {len(subjects)} unique subjects across triplets")
 
-        # Small-subject fallback: if we have < 5 subjects we can't do a clean
-        # 80/10/10 split. Fall back to a 70/15/15 with single-side handling,
-        # and if even that fails, put everyone in train (subject leakage
-        # acceptable for tiny datasets like TESS-only).
-        if len(subjects) >= 5:
+        # Small-subject fallback: if we have < 10 subjects we can't do a
+        # clean 80/10/10 split (sub_temp would be < 2 samples).
+        # Fall back gracefully:
+        #   >= 10 subjects -> standard 80/10/10
+        #   >= 5 subjects -> 80/20 train/test, val = train (shared)
+        #   >= 3 subjects -> 70/30 train/test, val = train
+        #   <  3 subjects -> everyone in train (subject leakage acceptable)
+        if len(subjects) >= 10:
             sub_train, sub_temp = train_test_split(subjects, test_size=0.2, random_state=args.seed)
             sub_val, sub_test = train_test_split(sub_temp, test_size=0.5, random_state=args.seed)
+        elif len(subjects) >= 5:
+            sub_train, sub_test = train_test_split(subjects, test_size=0.2, random_state=args.seed)
+            sub_val = sub_train
         elif len(subjects) >= 3:
             sub_train, sub_test = train_test_split(subjects, test_size=0.3, random_state=args.seed)
-            sub_val = sub_train  # val shares with train when too few subjects
+            sub_val = sub_train
         else:
             sub_train = subjects
             sub_val = subjects
