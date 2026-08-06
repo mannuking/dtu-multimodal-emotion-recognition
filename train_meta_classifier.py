@@ -24,7 +24,8 @@ from gpu_config import *
 from gpu_runtime import enable_tf_perf, set_seed
 
 # Perf runtime: mixed precision + XLA + multi-GPU MirroredStrategy
-STRATEGY = enable_tf_perf()
+# Meta is a small MLP trained from scratch — mixed precision is safe.
+STRATEGY = enable_tf_perf(mixed_precision=False)
 set_seed(SEED)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -379,6 +380,9 @@ def train_meta_classifier():
 
     # Build + compile inside strategy.scope() so MirroredStrategy can replicate it
     with STRATEGY.scope():
+        # Meta is a small MLP trained from scratch — safe to use mixed precision.
+        from gpu_runtime import enable_mixed_precision
+        enable_mixed_precision()
         meta_model = build_meta_classifier(input_dim=X.shape[1])
         meta_model.compile(
             optimizer=Adam(1e-3),

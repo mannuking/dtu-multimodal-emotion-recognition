@@ -14,7 +14,10 @@ from gpu_config import *
 from gpu_runtime import enable_tf_perf, set_seed
 
 # Perf runtime: mixed precision + XLA + multi-GPU MirroredStrategy
-STRATEGY = enable_tf_perf()
+# Note: FER uses pretrained VGG16/ResNet50 — mixed precision breaks with
+# float32 weights, so we explicitly leave it OFF here. Transfer learning
+# with fp32 weights runs fine on A100 — just slower.
+STRATEGY = enable_tf_perf(mixed_precision=False)
 set_seed(SEED)
 
 tf.random.set_seed(SEED)

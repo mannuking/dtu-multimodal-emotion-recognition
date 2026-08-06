@@ -14,11 +14,11 @@ import numpy as np
 import pickle
 import librosa
 from gpu_config import *
-from gpu_runtime import enable_tf_perf, set_seed, global_batch_size
+from gpu_runtime import enable_tf_perf, enable_mixed_precision, set_seed, global_batch_size
 from feature_utils import ensure_features_exist, EMOTION_ORDER_LOWER
 
 # Initialize perf runtime + strategy (mixed precision, XLA, multi-GPU)
-STRATEGY = enable_tf_perf()
+STRATEGY = enable_tf_perf(mixed_precision=False)  # defer — SER enables it inside scope
 set_seed(SEED)
 
 tf.random.set_seed(SEED)
@@ -118,6 +118,8 @@ def train_ser_model():
     # Multi-GPU: build + compile inside strategy.scope(). MirroredStrategy
     # splits batches across GPUs automatically.
     with STRATEGY.scope():
+        # SER trains from scratch — safe to use mixed precision here.
+        enable_mixed_precision()
         model = build_ser_1d_cnn((X.shape[1], 1))
         model.compile(
             optimizer=Adam(1e-3),
