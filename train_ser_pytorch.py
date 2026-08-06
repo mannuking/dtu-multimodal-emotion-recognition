@@ -119,21 +119,25 @@ class SER1DCNN(nn.Module):
         self.num_classes = num_classes
         self.dropout_conv = dropout_conv
         self.dropout_dense = dropout_dense
+        # 9 Conv1D blocks (paper Sec 5.1): progressive channel growth 64->128->256 then decay
         layers = []
         # Block 1: 1 -> 64
         layers += self._conv_block(1, 64)
         # Block 2: 64 -> 128
         layers += self._conv_block(64, 128)
         # Block 3: 128 -> 256
-        layers += self._conv_block(256, 256)
+        layers += self._conv_block(128, 256)
         # Block 4: 256 -> 256
         layers += self._conv_block(256, 256)
         # Block 5: 256 -> 128
         layers += self._conv_block(256, 128)
-        # Block 6: 128 -> 64 (paper: 9 conv blocks total)
+        # Block 6: 128 -> 64
         layers += self._conv_block(128, 64)
-        # Two more to reach 9
+        # Block 7: 64 -> 64
         layers += self._conv_block(64, 64)
+        # Block 8: 64 -> 64
+        layers += self._conv_block(64, 64)
+        # Block 9: 64 -> 64
         layers += self._conv_block(64, 64)
         self.features = nn.Sequential(*layers)
         self.flatten = nn.Flatten()
