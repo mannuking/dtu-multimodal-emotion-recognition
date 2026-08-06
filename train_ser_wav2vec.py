@@ -356,8 +356,11 @@ def train_ser_model():
 
     # ---- Test ----
     print("\nTest set evaluation:")
-    model.load_state_dict(best_state)
-    model.eval()
+    # Load state into the underlying (un-wrapped) module to handle both
+    # single-GPU and DataParallel saved checkpoints.
+    target_model = model.module if isinstance(model, nn.DataParallel) else model
+    target_model.load_state_dict(best_state)
+    target_model.eval()
     test_correct = 0
     test_total = 0
     with torch.no_grad():
@@ -369,6 +372,23 @@ def train_ser_model():
             test_total += x.size(0)
     test_acc = test_correct / test_total
     print(f"\u2705 Test accuracy: {test_acc:.4f}")
+
+    # ---- Save final summary ----
+    summary = {
+        "model": "wav2vec2-base frozen + MLP head",
+        "best_val_acc": float(best_val),
+        "test_acc": float(test_acc),
+        "n_train_samples": int(len(idx_train)),
+        "n_val_samples": int(len(idx_val)),
+        "n_test_samples": int(len(idx_test)),
+        "num_classes": int(num_classes),
+        "classes": [str(c) for c in label_encoder.classes_],
+        "epochs_trained": int(n_epochs),
+        "gpus_used": int(torch.cuda.device_count()),
+    }
+    with open(os.path.join(CHECKPOINT_DIR, "ser_training_summary.json"), "w") as f:
+        json.dump(summary, f, indent=2)
+    print(f"   saved summary to {CHECKPOINT_DIR}/ser_training_summary.json")
 
 
 if __name__ == "__main__":
