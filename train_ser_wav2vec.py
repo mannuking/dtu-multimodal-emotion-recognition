@@ -123,12 +123,12 @@ class FocalWeightedCE(nn.Module):
 
 # ===== Audio loading (from manifest) =====
 
-def load_audio_from_manifest(manifest_csv: str, sample_rate: int = 16000, max_seconds: float = 6.0, base_dir: str = "combined_ser_dataset"):
+def load_audio_from_manifest(manifest_csv: str, sample_rate: int = 16000, max_seconds: float = 6.0, base_dir: str = "."):
     """Read manifest, load all audio files into memory at 16 kHz mono.
 
     Manifest rows have 'wav_path' OR 'filepath'. Paths are resolved relative
-    to base_dir so a manifest entry like 'angry/123.wav' resolves to
-    combined_ser_dataset/angry/123.wav.
+    to base_dir (default: current working directory). A path like
+    'combined_ser_dataset/angry/123.wav' resolves to <cwd>/combined_ser_dataset/angry/123.wav.
 
     Returns:
         audio_list: list of np.ndarray (T,) float32
@@ -156,7 +156,7 @@ def load_audio_from_manifest(manifest_csv: str, sample_rate: int = 16000, max_se
     skipped = 0
     for i, row in df.iterrows():
         path = str(row["wav_path"])
-        # Resolve relative paths against base_dir
+        # Resolve relative paths against base_dir (default cwd)
         if not os.path.isabs(path):
             path = os.path.join(base_dir, path)
         if not os.path.exists(path):
