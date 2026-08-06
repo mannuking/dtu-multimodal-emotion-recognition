@@ -203,11 +203,45 @@ def main():
     for emo in EMOTIONS:
         print(f"  {emo}: {dist.get(emo, 0)}")
 
+    # Merge with existing manifest if present (skip duplicates by wav_path)
+    out_csv = base / "combined_ser_dataset" / "metadata.csv"
+    out_csv.parent.mkdir(exist_ok=True)
+    existing = []
+    if out_csv.exists():
+        with open(out_csv) as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                # Normalize schema: older manifests may use 'filepath'
+                if "filepath" in row and "wav_path" not in row:
+                    row["wav_path"] = row.pop("filepath")
+                existing.append(row)
+        print(f"  existing manifest: {len(existing)} rows (will merge in new samples)")
+
+    # Build merged dedup'd list: existing rows + newly scanned rows
+    combined = list(existing) + list(deduped)
+    seen = set()
+    final = []
+    for r in combined:
+        wp = r.get("wav_path", "")
+        if not wp or wp in seen:
+            continue
+        seen.add(wp)
+        final.append(r)
+    print(f"\nTotal merged: {len(final)} samples")
+
+    # Emotion distribution
+    dist = defaultdict(int)
+    for r in final:
+        dist[r["emotion"]] += 1
+    print("Class distribution:")
+    for emo in EMOTIONS:
+        print(f"  {emo}: {dist.get(emo, 0)}")
+
     # Write CSV
     with open(out_csv, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=["wav_path", "emotion", "dataset", "subject", "gender"])
         writer.writeheader()
-        writer.writerows(deduped)
+        writer.writerows(final)
     print(f"\n✓ Wrote {out_csv}")
 
 

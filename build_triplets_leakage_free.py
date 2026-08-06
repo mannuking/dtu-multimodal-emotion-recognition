@@ -89,6 +89,12 @@ def main():
     # ---- Load audio manifest (always required) ----
     audio_df = pd.read_csv(args.audio_manifest)
     print(f"[audio] loaded {len(audio_df)} rows from {args.audio_manifest}")
+    # Normalize column name: build_combined_ser_dataset uses 'wav_path', but
+    # older manifests used 'filepath'. Support both.
+    if "filepath" not in audio_df.columns and "wav_path" in audio_df.columns:
+        audio_df = audio_df.rename(columns={"wav_path": "filepath"})
+    if "filepath" not in audio_df.columns:
+        raise SystemExit(f"ERROR: audio manifest needs a 'filepath' (or 'wav_path') column. Found: {list(audio_df.columns)}")
     audio_df["emotion"] = audio_df["emotion"].str.lower()
     audio_df = audio_df[audio_df["emotion"].isin(EMOTION_ORDER_LOWER)].copy()
     audio_df["subject_id"] = audio_df["filepath"].apply(subject_id_from_audio_path)
