@@ -82,3 +82,9 @@ tess_kaggle.zip
 
 # wav2vec2 chunks (regeneratable via fetch_wav2vec2.sh)
 wav2vec2_chunks/
+
+# Combined dataset chunks (regeneratable via fetch_combined_dataset.sh)
+dataset_chunks/
+
+# Combined dataset chunks (regeneratable via fetch_combined_dataset.sh)
+dataset_chunks/
