@@ -282,10 +282,13 @@ def train_ser_model():
             for start in range(0, len(df), BATCH):
                 end = min(start + BATCH, len(df))
                 audios = []
+                skipped_in_batch = 0
                 for i in range(start, end):
                     p = df["wav_path"].iloc[i]
                     try:
-                        y, _ = librosa.load(p, sr=TARGET_SR, mono=True)
+                        y, _ = librosa.load(p, sr=TARGET_SR, mono=True, duration=MAX_S + 0.5)
+                        if len(y) < 1600:  # < 100ms, probably corrupt
+                            raise ValueError("audio too short")
                         max_samples = int(MAX_S * TARGET_SR)
                         if len(y) > max_samples:
                             y = y[:max_samples]
@@ -294,8 +297,11 @@ def train_ser_model():
                         if np.abs(y).max() > 0:
                             y = y / np.abs(y).max()
                         audios.append(y.astype(np.float32))
-                    except Exception:
+                    except Exception as e:
+                        skipped_in_batch += 1
                         audios.append(np.zeros(int(MAX_S * TARGET_SR), dtype=np.float32))
+                if skipped_in_batch > 0 and start % 1000 == 0:
+                    print(f"      [warn] {skipped_in_batch}/{BATCH} corrupt in batch starting {start}")
                 x_t = torch.as_tensor(np.stack(audios), dtype=torch.float32).to(device)
                 with torch.amp.autocast("cuda", dtype=torch.float16):
                     f = feature_extractor(x_t).float().cpu().numpy()
@@ -304,7 +310,8 @@ def train_ser_model():
                 if start % 200 == 0:
                     elapsed = time.time() - t0
                     eta = elapsed / max(1, start) * (len(df) - start)
-                    print(f"      [{start}/{len(df)}]  elapsed={elapsed:.0f}s  ETA={eta:.0f}s")
+                    pct = start / len(df) * 100
+                    print(f"      [{start}/{len(df)} {pct:.1f}%]  elapsed={elapsed:.0f}s  ETA={eta:.0f}s", flush=True)
 
         # Cache
         np.savez_compressed(cache_path,
