@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name=dtu-train
 #SBATCH -N 1
-#SBATCH --ntasks-per-node=${NTASKS_PER_NODE:-256}
-#SBATCH --gres=gpu:A100-SXM4:${NGPUS:-1}
+#SBATCH --ntasks-per-node=256
+#SBATCH --gres=gpu:A100-SXM4:1
 #SBATCH --time=12:00:00
 #SBATCH --output=train.%J.out
 #SBATCH --account=dtuarp-acc
@@ -10,16 +10,19 @@
 # ============================================================
 # DTU Multimodal Emotion Recognition — Full training pipeline
 #
-# Multi-GPU configuration (set NGPUS before sbatch):
+# Multi-GPU configuration:
 #
-#   1 GPU  : sbatch scripts/train.sbatch                    (--gres=A100:1)
-#   2 GPUs : sbatch --export=NGPUS=2 scripts/train.sbatch   (--gres=A100:2, 64 cores)
-#   4 GPUs : sbatch --export=NGPUS=4 scripts/train.sbatch   (--gres=A100:4, 128 cores)
-#   8 GPUs : sbatch --export=NGPUS=8 scripts/train.sbatch   (--gres=A100:8, 256 cores)
+#   Default (1 GPU):   sbatch scripts/train.sbatch
+#   2 GPUs:            sbatch --export=NGPUS=2,NTASKS_PER_NODE=64 \
+#                            --gres=gpu:A100-SXM4:2 scripts/train.sbatch
+#   4 GPUs:            sbatch --export=NGPUS=4,NTASKS_PER_NODE=128 \
+#                            --gres=gpu:A100-SXM4:4 scripts/train.sbatch
+#   8 GPUs:            sbatch --export=NGPUS=8,NTASKS_PER_NODE=256 \
+#                            --gres=gpu:A100-SXM4:8 scripts/train.sbatch
 #
-# Memory per GPU is 40 GB on PARAM Siddhi-AI A100-SXM4; 8×40 = 320 GB GPU memory
-# available on a full node. Our pipeline peak usage (SER + FER in sequence) is
-# ~30 GB, so any GPU count works without changing the env.
+# (PARAM Siddhi-AI manual: 32 CPU cores per GPU. SLURM needs literal values
+#  in #SBATCH directives — bash variable expansion doesn't work there, so the
+#  CLI overrides above are the way to ask for more GPUs.)
 #
 # Stages:
 #   1. Build leakage-free triplet manifest
@@ -36,15 +39,18 @@
 set -e
 cd "$SLURM_SUBMIT_DIR"
 
-# Resolve NGPUS (default 1) and CPU count (manual says 32 cores per GPU)
+# Resolve NGPUS — set via --export=NGPUS=N on the sbatch command line.
+# Default to 1 if not provided.
 NGPUS=${NGPUS:-1}
-NTASKS_PER_NODE=${NTASKS_PER_NODE:-$((32 * NGPUS))}
+# CPU count: prefer NTASKS_PER_NODE from --export, else fall back to SLURM's
+# actual allocation, else compute 32 cores/GPU.
+NTASKS_PER_NODE=${NTASKS_PER_NODE:-${SLURM_NTASKS_PER_NODE:-$((32 * NGPUS))}}
 
 echo "============================================================"
 echo "Train job started: $(date)"
 echo "Node: $(hostname)"
-echo "GPU: $(nvidia-smi -L 2>/dev/null | head -1)"
-echo "GPUs requested: $NGPUS  (tasks/node: $NTASKS_PER_NODE)"
+echo "GPU(s): $(nvidia-smi -L 2>/dev/null | head -8)"
+echo "NGPUS=$NGPUS  tasks/node=$NTASKS_PER_NODE"
 echo "Working dir: $(pwd)"
 echo "============================================================"
 
