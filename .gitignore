@@ -79,3 +79,6 @@ reports/preview_*.png
 # TESS dataset (regeneratable from Kaggle download)
 tess_wavs/
 tess_kaggle.zip
+
+# wav2vec2 chunks (regeneratable via fetch_wav2vec2.sh)
+wav2vec2_chunks/

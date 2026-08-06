@@ -274,8 +274,17 @@ def train_ser_model():
     test_loader = DataLoader(test_ds, batch_size=32, shuffle=False, num_workers=2, pin_memory=True)
 
     # ---- Model ----
-    print("   loading wav2vec2-base...")
-    model = Wav2Vec2SER(num_classes=num_classes).to(device)
+    print("   loading wav2vec2-base (from local cache if HF_HUB_OFFLINE=1)...")
+    local_model_path = os.path.expanduser(
+        "~/.cache/huggingface/hub/models--facebook--wav2vec2-base/snapshots/0b5b8e868dd84f03fd87d01f9c4ff0f080fecfe8"
+    )
+    if os.path.isdir(local_model_path) and os.path.exists(os.path.join(local_model_path, "pytorch_model.bin")):
+        model_name_or_path = local_model_path
+        print(f"   using cached model at {model_name_or_path}")
+    else:
+        model_name_or_path = "facebook/wav2vec2-base"
+        print(f"   using HF hub: {model_name_or_path}")
+    model = Wav2Vec2SER(num_classes=num_classes, model_name=model_name_or_path).to(device)
     if torch.cuda.device_count() > 1:
         model = nn.DataParallel(model)
     print(f"   trainable params: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
