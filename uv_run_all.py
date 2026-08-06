@@ -128,7 +128,7 @@ def main():
         sys.exit(1)
 
     # 2. Train SER
-    run([sys.executable, "train_ser_pytorch.py"], "Train SER (1D-CNN over MFCC + energy features, PyTorch)")
+    run([sys.executable, "train_ser_wav2vec.py"], "Train SER (wav2vec2-base frozen + MLP head, PyTorch)")
 
     # 3. Train TER (PyTorch + MobileBERT)
     run([sys.executable, "train_ter_pytorch.py"], "Train TER (MobileBERT + FGSM adversarial)")
@@ -140,7 +140,7 @@ def main():
     run([sys.executable, "train_meta_classifier_pytorch.py"], "Train meta-classifier (late fusion MLP, PyTorch)")
 
     # 6. Integrity test
-    ser_verified = run([sys.executable, "verify_ser_pytorch.py"], "Run integrity test on SER (PyTorch)")
+    ser_verified = run([sys.executable, "verify_ser_wav2vec.py"], "Run integrity test on SER (wav2vec2)")
 
     # 7. Summary
     banner("Pipeline summary")
