@@ -7,7 +7,7 @@ import tensorflow as tf
 from keras import layers, Model
 from keras.preprocessing.image import ImageDataGenerator
 from keras.callbacks import ReduceLROnPlateau, ModelCheckpoint, EarlyStopping
-from keras.optimizers import Adam
+from tf_keras.optimizers.legacy import Adam
 from sklearn.utils import class_weight
 import numpy as np
 from gpu_config import *

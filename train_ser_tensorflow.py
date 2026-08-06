@@ -6,7 +6,8 @@ os.environ['TF_USE_LEGACY_KERAS'] = '1'
 import tensorflow as tf
 from keras import layers, Model
 from keras.callbacks import ReduceLROnPlateau, ModelCheckpoint, EarlyStopping
-from tensorflow.keras.optimizers import Adam
+# With TF_USE_LEGACY_KERAS=1 the model lives in tf_keras; optimizer must too.
+from tf_keras.optimizers.legacy import Adam
 from train_utils import focal_weighted_cce, class_weights
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder

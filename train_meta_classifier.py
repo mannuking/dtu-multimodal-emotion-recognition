@@ -15,7 +15,7 @@ from transformers import MobileBertTokenizer, MobileBertForSequenceClassificatio
 # TensorFlow imports
 import tensorflow as tf
 from keras import layers, Model
-from keras.optimizers import Adam
+from keras.optimizers.legacy import Adam
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 import librosa

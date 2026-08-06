@@ -11,37 +11,20 @@
 # ============================================================
 # DTU Multimodal Emotion Recognition — Full training pipeline
 #
-# Multi-GPU configuration (per PARAM Siddhi-AI Advisories):
-#   - 16 cpus/GPU (Advisory 6)
-#   - No --exclusive flag (Advisory 5)
-#   - Max 8 running + 8 queued jobs/user (Advisory 4)
-#   - partition=dgxnp (your normal partition) + account=dtuarp-acc
+# Advisories honored:
+#   - partition=dgxnp + account=dtuarp-acc
+#   - 16 cpus/GPU
+#   - no --exclusive
+#   - max 8 running + 8 queued jobs
 #
-# Examples:
-#   1 GPU (default): sbatch scripts/train.sbatch
-#   2 GPUs:          sbatch --export=NGPUS=2,NTASKS_PER_NODE=32 \
-#                          --gres=gpu:A100-SXM4:2 scripts/train.sbatch
-#   4 GPUs:          sbatch --export=NGPUS=4,NTASKS_PER_NODE=64 \
-#                          --gres=gpu:A100-SXM4:4 scripts/train.sbatch
-#   8 GPUs (full):   sbatch --export=NGPUS=8,NTASKS_PER_NODE=128 \
-#                          --gres=gpu:A100-SXM4:8 scripts/train.sbatch
-#
-# Stages:
-#   1. Build leakage-free triplet manifest
-#   2. Train SER (1D-CNN, MFCC + energy)         ~ MirroredStrategy
-#   3. Train TER (MobileBERT + FGSM)             ~ nn.DataParallel
-#   4. Train FER (VGG16 + ResNet50 ensemble)    ~ MirroredStrategy
-#   5. Train meta-classifier (late fusion MLP)   ~ MirroredStrategy
-#   6. Run integrity test
-#   7. Print summary with measured accuracy vs paper claim
-#
-# Estimated runtime: 4-8 hrs on 1× A100, ~2-4 hrs on 4× A100.
+# GPU env vars MUST be set before any Python import — they tell the
+# CUDA runtime which GPUs are visible and how to initialize. Setting
+# these inside Python is too late (CUDA already initialized).
 # ============================================================
 
 set -e
 cd "$SLURM_SUBMIT_DIR"
 
-# Resolve NGPUS — set via --export=NGPUS=N on the sbatch command line.
 NGPUS=${NGPUS:-1}
 NTASKS_PER_NODE=${NTASKS_PER_NODE:-${SLURM_NTASKS_PER_NODE:-$((16 * NGPUS))}}
 
@@ -54,42 +37,49 @@ echo "NGPUS=$NGPUS  tasks/node=$NTASKS_PER_NODE"
 echo "Working dir: $(pwd)"
 echo "============================================================"
 
-# Ensure uv is on PATH
-export PATH="$HOME/.local/bin:$PATH"
+# ---- Critical: GPU env vars BEFORE any Python ----
+# Tell CUDA which GPUs to use (SLURM allocates these; restrict visibility)
+export CUDA_DEVICE_ORDER="PCI_BUS_ID"
+export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1,2,3,4,5,6,7}"
+# Tell TF to use the async CUDA allocator (faster on A100)
+export TF_GPU_ALLOCATOR="cuda_malloc_async"
+# Disable XLA flag that breaks newer CUDA
+export XLA_FLAGS="--xla_gpu_cuda_data_dir=/opt/hpcx"
+# Tell HF datasets to use offline cache when possible
+export HF_HUB_DISABLE_TELEMETRY=1
+# Avoid TF import order issues — set Keras backend explicitly
+export TF_USE_LEGACY_KERAS=1
+export KERAS_BACKEND="tensorflow"
 
-# Install uv if missing
+# ---- uv on PATH ----
+export PATH="$HOME/.local/bin:$PATH"
 if ! command -v uv &>/dev/null; then
     echo "uv not found at ~/.local/bin/uv — installing..."
     curl -LsSf https://astral.sh/uv/install.sh | sh
     export PATH="$HOME/.local/bin:$PATH"
 fi
-echo "uv location: $(which uv)"
-echo "uv version: $(uv --version)"
+echo "uv: $(uv --version)"
 
-# Sync deps (idempotent — fast if up-to-date, slow on first run)
+# ---- Sync deps ----
 echo "Syncing Python dependencies..."
 uv sync --extra cuda 2>&1 | tee uv_sync.log || {
-    echo "uv sync failed — likely stale venv. Recreating from scratch..."
+    echo "uv sync failed — recreating venv from scratch..."
     rm -rf .venv
     uv sync --extra cuda 2>&1 | tee uv_sync.log
 }
 
-# Verify dataset
+# ---- Verify dataset ----
 if [[ ! -f "combined_ser_dataset/metadata.csv" ]]; then
     echo "ERROR: combined_ser_dataset/metadata.csv missing"
-    echo "Run scripts/setup.sbatch first to download the dataset."
     exit 1
 fi
 WAV_COUNT=$(find combined_ser_dataset -name "*.wav" 2>/dev/null | wc -l)
 echo "Dataset: $WAV_COUNT wav files"
+
+# ---- GPU visibility check ----
+echo "GPU visibility (nvidia-smi):"
+nvidia-smi -L | head -8
+
 echo ""
-
-# GPU summary
-nvidia-smi -L 2>&1 | head -10 || echo "nvidia-smi unavailable"
-
-# Run pipeline
 echo "Launching uv_run_all.py..."
-echo "  (full pipeline: SER → TER → FER → meta-classifier → integrity test)"
-echo ""
-
 uv run python uv_run_all.py
