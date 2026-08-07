@@ -326,11 +326,19 @@ def train_ser_model():
                     pct = start / len(df) * 100
                     print(f"      [{start}/{len(df)} {pct:.1f}%]  elapsed={elapsed:.0f}s  ETA={eta:.0f}s", flush=True)
 
-        # Cache
-        np.savez_compressed(cache_path,
-                            feats=np.array(feats_list, dtype=object),
-                            paths=df["wav_path"].astype(str).values)
-        print(f"   cached features to {cache_path}")
+        # NOTE: We deliberately do NOT cache the extracted features to disk.
+        # Reasons (after 2026-08-07 HPC hang):
+        #   1. wav2vec2 outputs variable-length frame sequences (different audio lengths
+        #      → different output frame counts). So feats_list is an object-dtype array
+        #      of 11,568 variable-shape numpy arrays.
+        #   2. np.savez_compressed on such an array pickles each element, which is
+        #      extremely slow on NFS and tends to produce 0-byte files on partial
+        #      flushes. np.savez (uncompressed) is faster but still slow.
+        #   3. Extraction cost is ~3 min on a single A100. That's cheaper than the
+        #      failure modes the cache introduces (corruption on kill, NFS slowness,
+        #      0-byte files, no atomic-rename safety).
+        # Cost: every fresh run pays the ~3 min extraction cost. Acceptable.
+        print(f"   extracted {len(feats_list)} feature vectors in {time.time()-t0:.0f}s (not cached by design)")
 
     # ---- Build datasets ----
     audio_train = [feats_list[i] for i in idx_train_full]
