@@ -452,22 +452,31 @@ def train_ser_model(seed: int = SEED, num_unfrozen_layers: int = 12):
     #   first split 70% train / 30% held-out
     #   second split of held-out: 50% val / 50% test
     # Expected with 42 subjects: train ~8100 / val ~1700 / test ~1700.
+    # Subject-disjoint split.
+    # IMPORTANT: split is FIXED to SEED=42 across all ensemble runs.
+    # Different SEED values vary the model init, dropout, SpecAugment,
+    # and other stochastic ops — but the data split stays the same so
+    # we can ensemble predictions on a single canonical test set.
+    # (Prior version: split random_state = seed, which produced
+    # broken splits when seed=44 gave test=364 samples — too few to
+    # estimate accuracy reliably. Verified Aug 7 2026.)
+    split_seed = 42
     if "subject" in df.columns:
         subjects = df["subject"].astype(str).values
-        gss = GroupShuffleSplit(n_splits=1, test_size=0.30, random_state=seed)
+        gss = GroupShuffleSplit(n_splits=1, test_size=0.30, random_state=split_seed)
         idx_train_full, idx_temp = next(gss.split(np.arange(len(df)), y_all, groups=subjects))
-        gss2 = GroupShuffleSplit(n_splits=1, test_size=0.50, random_state=seed)
+        gss2 = GroupShuffleSplit(n_splits=1, test_size=0.50, random_state=split_seed)
         idx_val, idx_test = next(gss2.split(idx_temp, y_all[idx_temp], groups=subjects[idx_temp]))
         idx_val = idx_temp[idx_val]
         idx_test = idx_temp[idx_test]
-        print(f"   subject-disjoint: {len(df['subject'].unique())} subjects")
+        print(f"   subject-disjoint: {len(df['subject'].unique())} subjects (split_seed=42, fixed across ensemble)")
     else:
         idx_train_full, idx_temp, _, _ = train_test_split(
-            np.arange(len(df)), test_size=0.30, random_state=seed, stratify=y_all
+            np.arange(len(df)), test_size=0.30, random_state=split_seed, stratify=y_all
         )
         y_temp = y_all[idx_temp]
         idx_val, idx_test, _, _ = train_test_split(
-            np.arange(len(idx_temp)), y_temp, test_size=0.50, random_state=seed, stratify=y_temp
+            np.arange(len(idx_temp)), y_temp, test_size=0.50, random_state=split_seed, stratify=y_temp
         )
         idx_val = idx_temp[idx_val]
         idx_test = idx_temp[idx_test]
