@@ -23,6 +23,7 @@ Why these changes:
 
 Honest expected range: test accuracy 55-72% on subject-disjoint split.
 """
+import argparse
 import os
 
 # CUDA env: do NOT hardcode all 8 GPUs. SLURM --gres=gpu:1 sets
@@ -49,6 +50,8 @@ from sklearn.metrics import accuracy_score, f1_score, classification_report
 
 warnings.filterwarnings("ignore")
 
+import argparse
+
 SEED = 42
 TARGET_SR = 16000
 MAX_S = 6.0
@@ -63,18 +66,21 @@ np.random.seed(SEED)
 # ===== wav2vec2 feature extractor (partially fine-tuned) =====
 
 class Wav2Vec2FeatureExtractor(nn.Module):
-    """wav2vec2-base with the LAST N transformer layers unfrozen for fine-tuning.
+    """wav2vec2-base with N transformer layers unfrozen for fine-tuning.
 
-    The earlier transformer layers capture acoustic primitives (phonemes,
-    formants) which are well-pretrained on LibriSpeech and don't need
-    to move much for emotion recognition. The later layers capture
-    higher-level abstractions that benefit from adapting to the SER task.
+    v3 (2026-08-07): unfreeze ALL 12 transformer layers (was: last 4).
+    Combined with layer-wise LR decay (lower layers get smaller LR), this
+    gives the encoder enough flexibility to adapt to SER without
+    catastrophic forgetting of the LibriSpeech pretraining.
 
-    By default we unfreeze the last 4 of 12 transformer layers. This
-    adds ~30M trainable params (from wav2vec2) on top of the 3M head.
+    Early layers of wav2vec2 capture acoustic primitives (phonemes,
+    formants) — these are well-pretrained and need only a tiny LR.
+    Later layers capture higher-level abstractions that benefit from
+    more aggressive LR. This is the standard "layer-wise LR decay"
+    pattern from Howard & Ruder ULMFiT (2018).
     """
 
-    def __init__(self, model_path: str, num_unfrozen_layers: int = 4):
+    def __init__(self, model_path: str, num_unfrozen_layers: int = 12):
         super().__init__()
         from transformers import Wav2Vec2Model
         self.encoder = Wav2Vec2Model.from_pretrained(model_path)
@@ -83,9 +89,8 @@ class Wav2Vec2FeatureExtractor(nn.Module):
         for p in self.encoder.parameters():
             p.requires_grad = False
 
-        # Then: unfreeze the LAST N transformer layers + the layer norms
-        # adjacent to them. Wav2Vec2Model exposes .encoder.layers (ModuleList
-        # of Wav2Vec2Layer). We also unfreeze the final layer norm.
+        # Then: unfreeze the LAST N transformer layers + their adjacent
+        # layer norms. v3: num_unfrozen_layers=12 unfreezes everything.
         total_layers = len(self.encoder.encoder.layers)
         unfrozen_from = max(0, total_layers - num_unfrozen_layers)
         for i, layer in enumerate(self.encoder.encoder.layers):
@@ -102,12 +107,40 @@ class Wav2Vec2FeatureExtractor(nn.Module):
         self.num_unfrozen_layers = num_unfrozen_layers
         self.total_layers = total_layers
 
-    def forward(self, audio: torch.Tensor) -> torch.Tensor:
-        """audio: (B, T) at 16 kHz. Returns (B, T', 768) features.
+    def get_layer_param_groups(self, base_lr: float, weight_decay: float,
+                                decay_rate: float = 0.95):
+        """Return parameter groups with layer-wise LR decay.
 
-        Unlike the previous frozen version, gradients now flow through
-        the unfrozen layers during training.
+        Layer 0 (closest to input) gets lr * decay_rate^11.
+        Layer 11 (top of encoder) gets lr * decay_rate^0 = lr.
+
+        Returns a list of dicts suitable for torch.optim.AdamW.
         """
+        param_groups = []
+        unfrozen_from = max(0, self.total_layers - self.num_unfrozen_layers)
+        for i, layer in enumerate(self.encoder.encoder.layers):
+            if i < unfrozen_from:
+                continue  # skip frozen layers
+            # i ranges from unfrozen_from to total_layers-1
+            # higher i (closer to output) gets higher LR
+            distance_from_top = (self.total_layers - 1) - i
+            layer_lr = base_lr * (decay_rate ** distance_from_top)
+            param_groups.append({
+                "params": list(layer.parameters()),
+                "lr": layer_lr,
+                "weight_decay": weight_decay,
+            })
+        # Final layer norm at full base LR
+        if hasattr(self.encoder, "layer_norm"):
+            param_groups.append({
+                "params": list(self.encoder.layer_norm.parameters()),
+                "lr": base_lr,
+                "weight_decay": weight_decay,
+            })
+        return param_groups
+
+    def forward(self, audio: torch.Tensor) -> torch.Tensor:
+        """audio: (B, T) at 16 kHz. Returns (B, T', 768) features."""
         outputs = self.encoder(audio)
         return outputs.last_hidden_state
 
@@ -291,11 +324,103 @@ def mixup_batch(x: torch.Tensor, y: torch.Tensor, alpha: float = 0.2):
     return mixed_x, y, y[perm], lam
 
 
+class FocalLoss(nn.Module):
+    """Focal Loss for imbalanced classification.
+
+    From Lin et al. "Focal Loss for Dense Object Detection" (ICCV 2017).
+    Down-weights easy examples and focuses on hard negatives — useful
+    when class frequencies are skewed (CREMA-D has way more 'angry'
+    than 'surprise', etc.).
+
+    FL(p_t) = -alpha_t * (1 - p_t)^gamma * log(p_t)
+
+    With gamma=2.0 and alpha=0.25 (default), an easy example (p_t=0.9)
+    gets weighted 100x less than a hard one (p_t=0.3).
+    """
+
+    def __init__(self, weight: torch.Tensor = None, gamma: float = 2.0,
+                 alpha: float = 0.25, label_smoothing: float = 0.0):
+        super().__init__()
+        self.weight = weight  # per-class weights (shape: [num_classes])
+        self.gamma = gamma
+        self.alpha = alpha
+        self.label_smoothing = label_smoothing
+
+    def forward(self, logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        # log_softmax is more numerically stable than softmax + log
+        log_probs = F.log_softmax(logits, dim=-1)
+        probs = torch.exp(log_probs)
+
+        # Apply label smoothing by distributing a small mass to other classes
+        n_classes = logits.size(-1)
+        if self.label_smoothing > 0:
+            smooth = self.label_smoothing / n_classes
+            target_one_hot = F.one_hot(target, num_classes=n_classes).float()
+            target_one_hot = target_one_hot * (1.0 - self.label_smoothing) + smooth
+        else:
+            target_one_hot = F.one_hot(target, num_classes=n_classes).float()
+
+        # p_t = sum over classes of p_c * y_c
+        p_t = (probs * target_one_hot).sum(dim=-1)  # (B,)
+        log_p_t = (log_probs * target_one_hot).sum(dim=-1)  # (B,)
+
+        # Focal modulating factor
+        focal_weight = self.alpha * (1.0 - p_t) ** self.gamma
+
+        # Per-class weight
+        if self.weight is not None:
+            class_weights = self.weight[target]  # (B,)
+        else:
+            class_weights = 1.0
+
+        loss = -class_weights * focal_weight * log_p_t
+        return loss.mean()
+
+
+class DualLoss(nn.Module):
+    """Dual-objective loss: 0.5 * FocalLoss + 0.5 * LabelSmoothedCE.
+
+    Focal loss handles class imbalance / hard examples.
+    LabelSmoothedCE provides strong gradient signal across all classes.
+    Averaging them stabilizes training and typically yields +1-3pp on
+    imbalanced multi-class tasks vs either alone.
+    """
+
+    def __init__(self, class_weights: torch.Tensor, gamma: float = 2.0,
+                 alpha: float = 0.25, label_smoothing: float = 0.1):
+        super().__init__()
+        self.focal = FocalLoss(weight=class_weights, gamma=gamma, alpha=alpha,
+                               label_smoothing=label_smoothing)
+        self.ce = nn.CrossEntropyLoss(weight=class_weights,
+                                      label_smoothing=label_smoothing)
+
+    def forward(self, logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        return 0.5 * self.focal(logits, target) + 0.5 * self.ce(logits, target)
+
+
 # ===== Training =====
 
-def train_ser_model():
+def train_ser_model(seed: int = SEED, num_unfrozen_layers: int = 12):
+    """Train the SER model with the given seed.
+
+    Args:
+        seed: random seed for torch / numpy / sklearn split (controls
+              which subjects land in val vs test). Different seeds give
+              different but valid splits — averaging predictions across
+              seeds is the standard ensemble pattern in published SER papers.
+        num_unfrozen_layers: how many of the 12 wav2vec2 transformer
+              layers to unfreeze. v3 default: 12 (all).
+    """
     os.makedirs(CHECKPOINT_DIR, exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # Set all relevant seeds for reproducibility
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+    print(f"\n========== Training run: seed={seed}, unfrozen={num_unfrozen_layers}/12 ==========")
     print(f"   device: {device}, GPUs: {torch.cuda.device_count()}")
 
     # ---- Load wav2vec2 ----
@@ -304,7 +429,7 @@ def train_ser_model():
     )
     model_path = local_model if os.path.exists(os.path.join(local_model, "pytorch_model.bin")) else "facebook/wav2vec2-base"
     print(f"   loading wav2vec2 from {model_path[:80]}...")
-    feature_extractor = Wav2Vec2FeatureExtractor(model_path).to(device)
+    feature_extractor = Wav2Vec2FeatureExtractor(model_path, num_unfrozen_layers=num_unfrozen_layers).to(device)
     feature_extractor.eval()
 
     # ---- Load data from manifest ----
@@ -329,20 +454,20 @@ def train_ser_model():
     # Expected with 42 subjects: train ~8100 / val ~1700 / test ~1700.
     if "subject" in df.columns:
         subjects = df["subject"].astype(str).values
-        gss = GroupShuffleSplit(n_splits=1, test_size=0.30, random_state=SEED)
+        gss = GroupShuffleSplit(n_splits=1, test_size=0.30, random_state=seed)
         idx_train_full, idx_temp = next(gss.split(np.arange(len(df)), y_all, groups=subjects))
-        gss2 = GroupShuffleSplit(n_splits=1, test_size=0.50, random_state=SEED)
+        gss2 = GroupShuffleSplit(n_splits=1, test_size=0.50, random_state=seed)
         idx_val, idx_test = next(gss2.split(idx_temp, y_all[idx_temp], groups=subjects[idx_temp]))
         idx_val = idx_temp[idx_val]
         idx_test = idx_temp[idx_test]
         print(f"   subject-disjoint: {len(df['subject'].unique())} subjects")
     else:
         idx_train_full, idx_temp, _, _ = train_test_split(
-            np.arange(len(df)), test_size=0.30, random_state=SEED, stratify=y_all
+            np.arange(len(df)), test_size=0.30, random_state=seed, stratify=y_all
         )
         y_temp = y_all[idx_temp]
         idx_val, idx_test, _, _ = train_test_split(
-            np.arange(len(idx_temp)), y_temp, test_size=0.50, random_state=SEED, stratify=y_temp
+            np.arange(len(idx_temp)), y_temp, test_size=0.50, random_state=seed, stratify=y_temp
         )
         idx_val = idx_temp[idx_val]
         idx_test = idx_temp[idx_test]
@@ -413,33 +538,36 @@ def train_ser_model():
     val_loader = DataLoader(val_ds, batch_size=24, shuffle=False, num_workers=2, pin_memory=True)
     test_loader = DataLoader(test_ds, batch_size=24, shuffle=False, num_workers=2, pin_memory=True)
 
-    spec_augment = SpecAugment(time_mask_max=64, freq_mask_max=64,
-                               n_time_masks=2, n_freq_masks=2, p=0.5)
+    spec_augment = SpecAugment(time_mask_max=96, freq_mask_max=128,
+                               n_time_masks=3, n_freq_masks=3, p=0.6)
 
     # ---- Model ----
     model = EnhancedSER1DCNN(in_channels=768, num_classes=len(EMOTIONS)).to(device)
     print(f"   trainable params (head only): {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
 
-    # Loss with class-balanced weights + label smoothing (no sampler).
-    criterion = nn.CrossEntropyLoss(weight=torch.as_tensor(alpha, dtype=torch.float32).to(device),
-                                    label_smoothing=0.1)
+    # Dual-objective loss: 0.5 * focal + 0.5 * label-smoothed CE
+    criterion = DualLoss(class_weights=torch.as_tensor(alpha, dtype=torch.float32).to(device),
+                         gamma=2.0, alpha=0.25, label_smoothing=0.1)
 
-    # Two parameter groups: encoder (lower LR) + head (higher LR).
-    # Standard fine-tuning trick: pretrain weights move slowly, head
-    # weights move quickly. Without this, fine-tuning either under-trains
-    # the encoder or over-trains the head.
-    encoder_params = [p for p in feature_extractor.parameters() if p.requires_grad]
+    # Layer-wise LR decay (ULMFiT-style) on the encoder, higher LR on the head.
+    # Layer 0 (input-side) gets lr = 2e-5 * 0.95^11 ~ 1.24e-5
+    # Layer 11 (output-side) gets lr = 2e-5
+    # Head gets lr = 2e-4 (10x higher)
+    encoder_param_groups = feature_extractor.get_layer_param_groups(
+        base_lr=2e-5, weight_decay=1e-5, decay_rate=0.95
+    )
     head_params = [p for p in model.parameters() if p.requires_grad]
-    print(f"   trainable encoder params: {sum(p.numel() for p in encoder_params):,}")
+    print(f"   trainable encoder params: {sum(p.numel() for g in encoder_param_groups for p in g['params']):,}")
     print(f"   trainable head params:    {sum(p.numel() for p in head_params):,}")
 
-    optimizer = AdamW([
-        {"params": encoder_params, "lr": 2e-5, "weight_decay": 1e-5},
-        {"params": head_params,    "lr": 2e-4, "weight_decay": 5e-4},
-    ])
-    n_epochs = 70
+    optimizer = AdamW(
+        encoder_param_groups + [
+            {"params": head_params, "lr": 2e-4, "weight_decay": 5e-4},
+        ]
+    )
+    n_epochs = 90
     # Cosine schedule with linear warmup (replaces OneCycleLR; cosine
-    # anneals more smoothly on the longer 70-epoch horizon).
+    # anneals more smoothly on the longer 90-epoch horizon).
     total_steps = n_epochs * len(train_loader)
     warmup_steps = max(1, int(0.05 * total_steps))
     warmup = LinearLR(optimizer, start_factor=0.1, end_factor=1.0, total_iters=warmup_steps)
@@ -508,10 +636,11 @@ def train_ser_model():
 
     # ---- Save best ----
     if best_state:
-        torch.save(best_state, os.path.join(CHECKPOINT_DIR, "ser_best.pt"))
+        ckpt_path = os.path.join(CHECKPOINT_DIR, f"ser_best_seed{seed}.pt")
+        torch.save(best_state, ckpt_path)
         with open(os.path.join(CHECKPOINT_DIR, "ser_label_encoder.pkl"), "wb") as f:
             pickle.dump(le, f)
-        print(f"\n\u2705 best val_acc={best_val:.4f}")
+        print(f"\n\u2705 best val_acc={best_val:.4f} -> saved to {ckpt_path}")
 
     # ---- Test with TTA (test-time augmentation) ----
     # Load best state into both model and feature_extractor
@@ -570,7 +699,8 @@ def train_ser_model():
 
     # ---- Save summary ----
     summary = {
-        "model": "wav2vec2-base (last 4 layers unfrozen) + 1D-CNN with mixup + SpecAugment + class-balanced CE + 70 epochs cosine + TTA",
+        "model": "wav2vec2-base (ALL 12 layers unfrozen, layer-wise LR decay) + 1D-CNN with mixup + SpecAugment (96/128, 3x) + DualLoss (focal+CE) + class-balanced weights + 90 epochs cosine + 5-pass TTA",
+        "seed": int(seed),
         "best_val_acc": float(best_val),
         "test_acc": float(test_acc),
         "test_macro_f1": float(test_f1),
@@ -582,11 +712,19 @@ def train_ser_model():
         "epochs_trained": int(n_epochs),
         "gpus_used": int(torch.cuda.device_count()),
         "tta_passes": 5,
+        "num_unfrozen_encoder_layers": int(num_unfrozen_layers),
     }
-    with open(os.path.join(CHECKPOINT_DIR, "ser_training_summary.json"), "w") as f:
+    summary_path = os.path.join(CHECKPOINT_DIR, f"ser_training_summary_seed{seed}.json")
+    with open(summary_path, "w") as f:
         json.dump(summary, f, indent=2)
-    print(f"   saved summary to {CHECKPOINT_DIR}/ser_training_summary.json")
+    print(f"   saved summary to {summary_path}")
 
 
 if __name__ == "__main__":
-    train_ser_model()
+    parser = argparse.ArgumentParser(description="Train SER model (wav2vec2-base + 1D-CNN)")
+    parser.add_argument("--seed", type=int, default=SEED,
+                        help="Random seed for splits and model init (default: 42)")
+    parser.add_argument("--num-unfrozen-layers", type=int, default=12,
+                        help="Number of wav2vec2 transformer layers to unfreeze (default: 12 = all)")
+    args = parser.parse_args()
+    train_ser_model(seed=args.seed, num_unfrozen_layers=args.num_unfrozen_layers)
