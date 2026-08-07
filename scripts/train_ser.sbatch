@@ -11,14 +11,9 @@
 # ============================================================
 # DTU SER enhanced training — SLURM wrapper
 # ============================================================
-# Survives SSH drops. Runs on a compute node with one A100.
-# All output goes to ser_train.<JOBID>.{out,err} files you can
-# tail from any shell session.
-# Usage:
-#   cd ~/Research/dtu/dtu-multimodal-emotion-recognition
-#   sbatch scripts/train_ser.sbatch
-#   squeue -u $USER                      # see job id
-#   tail -f ser_train.<JOBID>.out        # watch progress
+# Jai prefers interactive `uv run | tee` flow on the login node.
+# This script is here for unattended/long runs only; not the
+# default path. See memory: user dislikes sbatch pain.
 # ============================================================
 
 set -e
@@ -31,10 +26,8 @@ echo "JobID: $SLURM_JOB_ID"
 echo "Working dir: $(pwd)"
 echo "============================================================"
 
-# Pull latest code (in case local edits weren't pushed)
 git pull origin main || echo "  (git pull failed — continuing with local checkout)"
 
-# Run with full visibility
 HF_HUB_OFFLINE=1 uv run python -u train_ser_enhanced.py 2>&1 | tee train_ser_enhanced.log
 
 echo "============================================================"
