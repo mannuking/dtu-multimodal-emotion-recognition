@@ -258,20 +258,33 @@ def train_ser_model():
 
     # Pre-extract wav2vec2 features (cache to disk for speed)
     cache_path = os.path.join(CHECKPOINT_DIR, "wav2vec2_features.npz")
+    feats_list = None
     if os.path.exists(cache_path):
-        print(f"   loading cached features from {cache_path}...")
-        cache = np.load(cache_path, allow_pickle=True)
-        feats = cache["feats"]
-        cached_paths = cache["paths"]
-        # Verify cache matches
-        all_paths = df["wav_path"].astype(str).values
-        if len(cached_paths) != len(all_paths):
-            print("   cache mismatch, regenerating...")
-            feats = None
-        else:
-            feats_list = [feats[i] for i in range(len(feats))]
-    else:
-        feats_list = None
+        cache_size_mb = os.path.getsize(cache_path) / (1024 * 1024)
+        print(f"   loading cached features from {cache_path} ({cache_size_mb:.1f} MB)...")
+        try:
+            cache = np.load(cache_path, allow_pickle=True)
+            feats = cache["feats"]
+            cached_paths = cache["paths"]
+            cache.close()
+            # Verify cache matches
+            all_paths = df["wav_path"].astype(str).values
+            if len(cached_paths) != len(all_paths):
+                print(f"   cache mismatch (cached={len(cached_paths)} vs manifest={len(all_paths)}), regenerating...")
+                del feats, cached_paths
+                feats_list = None
+            else:
+                # Materialize object array eagerly so a later corruption doesn't kill us mid-run
+                feats_list = [feats[i] for i in range(len(feats))]
+                del feats, cached_paths
+                print(f"   loaded {len(feats_list)} cached feature vectors")
+        except (EOFError, OSError, KeyError, ValueError) as e:
+            print(f"   WARNING: cache unreadable ({type(e).__name__}: {e}), deleting and regenerating...")
+            try:
+                os.remove(cache_path)
+            except OSError:
+                pass
+            feats_list = None
 
     if feats_list is None:
         print(f"   extracting wav2vec2 features for {len(df)} files (one-time, ~10 min)...")
