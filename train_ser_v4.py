@@ -75,7 +75,7 @@ ENCODER_HIDDEN = 1024
 ENCODER_LAYERS = 24
 
 # Training defaults (chosen for A100-40GB with grad checkpointing)
-BATCH_SIZE = 32   # Per-job total batch; with 4 GPUs in DataParallel
+BATCH_SIZE = 16   # Per-job total batch; with 2 GPUs in DataParallel
                   # this means 8 samples per GPU per step. Adjust
                   # downward if OOM.
 NUM_EPOCHS = 50  # shorter than v2/v3 because large converges faster

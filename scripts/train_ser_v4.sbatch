@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name=dtu-ser-v4
 #SBATCH -N 1
-#SBATCH --ntasks-per-node=4
-#SBATCH --gres=gpu:A100-SXM4:4
+#SBATCH --ntasks-per-node=2
+#SBATCH --gres=gpu:A100-SXM4:2
 #SBATCH --time=06:00:00
 #SBATCH --output=ser_v4.%J.out
 #SBATCH --error=ser_v4.%J.err
@@ -17,14 +17,16 @@
 #   - Bidirectional attention pooling head
 #   - Supervised Contrastive (SupCon) auxiliary loss (Khosla et al. 2020)
 #   - Gradient checkpointing enabled for memory
-#   - Multi-GPU via nn.DataParallel (4× A100 per job)
+#   - Multi-GPU via nn.DataParallel (2× A100 per job)
 #   - 50 epochs cosine (vs 70 in v2 — large converges faster)
 #
-# Expected runtime: ~3-4 hours per seed on 4× A100 (DataParallel speedup).
+# Expected runtime: ~4-5 hours per seed on 2× A100 (DataParallel speedup).
 # 6-hour budget is safe.
 #
-# GPU budget per job: 4× A100-40GB = 160 GB total. With DataParallel +
+# GPU budget per job: 2× A100-40GB = 80 GB total. With DataParallel +
 # grad ckpt + batch_size=8 per GPU, peak memory ~28 GB/GPU, safe.
+# Across 3 jobs (seeds 42/43/44) we use 6× A100 total, leaving the rest
+# of the dgxnp partition free for other cluster users.
 #
 # Usage (from HPC login node, NEVER run compute on login):
 #   cd ~/Research/dtu/dtu-multimodal-emotion-recognition
@@ -57,7 +59,7 @@ echo "============================================================"
 git pull origin main || echo "  (git pull failed - continuing with local checkout)"
 
 # GPU visibility: SLURM assigns GPUs and sets CUDA_VISIBLE_DEVICES for us.
-# Each job sees only the GPUs SLURM allocated (typically 4 GPUs per job).
+# Each job sees only the GPUs SLURM allocated (2 GPUs per job per Jai's spec).
 # nn.DataParallel in train_ser_v4.py picks up all visible GPUs automatically.
 echo "Visible GPUs: $(nvidia-smi -L 2>/dev/null | wc -l)"
 echo "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-<unset>}"
