@@ -74,10 +74,12 @@ ENCODER_NAME = "facebook/wav2vec2-large"
 ENCODER_HIDDEN = 1024
 ENCODER_LAYERS = 24
 
-# Training defaults (chosen for A100-40GB with grad checkpointing)
-BATCH_SIZE = 16   # Per-job total batch; with 2 GPUs in DataParallel
-                  # this means 8 samples per GPU per step. Adjust
-                  # downward if OOM.
+# Training defaults (chosen for A100-40GB with grad checkpointing, single GPU)
+BATCH_SIZE = 8    # Single-GPU config (Jai's final spec 2026-08-08).
+                  # Multi-GPU was requested but got stuck in PD state
+                  # in the dgxnp scheduler, so we reverted to 1 GPU per
+                  # job with batch 8. With grad ckpt + wav2vec2-large,
+                  # peak memory ~32 GB, safe on A100-40GB.
 NUM_EPOCHS = 50  # shorter than v2/v3 because large converges faster
 LR_ENCODER_BASE = 1e-5   # 2x lower than v3 base, since large is bigger
 LR_HEAD = 1e-4
