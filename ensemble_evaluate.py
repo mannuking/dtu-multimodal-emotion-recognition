@@ -7,8 +7,15 @@ report. This is the standard "deep ensemble" pattern from Lakshminarayanan
 2017 — averaging softmax outputs reduces variance and typically adds 2-4pp
 over the best single model.
 
+The train script fixes split_seed=42 across all ensemble runs, so the test
+set is identical across seeds (only model init / dropout / SpecAugment vary).
+This script reproduces the same split to load the right test audios.
+
 Usage (from HPC login or compute node):
   uv run python ensemble_evaluate.py --seeds 42 43 44 --n-tta 5
+  uv run python ensemble_evaluate.py --seeds 42 43 44 --n-tta 10
+
+Expected runtime: ~5 min per seed (TTA only, no training).
 """
 
 import argparse
@@ -73,22 +80,19 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--seeds", type=int, nargs="+", required=True,
                         help="Seeds whose checkpoints to ensemble")
-    parser.add_argument("--reference-seed", type=int, default=None,
-                        help="Use this seed's split for test set (default: first seed)")
     parser.add_argument("--n-tta", type=int, default=5,
                         help="Number of TTA passes per checkpoint (default: 5)")
     args = parser.parse_args()
 
-    ref_seed = args.reference_seed or args.seeds[0]
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
     print(f"Seeds to ensemble: {args.seeds}")
-    print(f"Reference split seed (for test indices): {ref_seed}")
     print(f"TTA passes: {args.n_tta}")
+    print(f"Note: split_seed=42 is fixed in train_ser_enhanced.py, so all seeds share the same test set.")
 
-    # ---- Reproduce the reference seed's split to get test indices ----
-    torch.manual_seed(ref_seed)
-    np.random.seed(ref_seed)
+    # ---- Reproduce the canonical split (split_seed=42) to get test indices ----
+    torch.manual_seed(42)
+    np.random.seed(42)
 
     manifest_csv = os.path.join(SER_COMBINED_DIR, "metadata.csv")
     df = pd.read_csv(manifest_csv)
@@ -100,13 +104,13 @@ def main():
     y_all = le.transform(df["emotion"].values)
 
     subjects = df["subject"].astype(str).values
-    gss = GroupShuffleSplit(n_splits=1, test_size=0.30, random_state=ref_seed)
+    gss = GroupShuffleSplit(n_splits=1, test_size=0.30, random_state=42)
     idx_train_full, idx_temp = next(gss.split(np.arange(len(df)), y_all, groups=subjects))
-    gss2 = GroupShuffleSplit(n_splits=1, test_size=0.50, random_state=ref_seed)
+    gss2 = GroupShuffleSplit(n_splits=1, test_size=0.50, random_state=42)
     idx_val, idx_test = next(gss2.split(idx_temp, y_all[idx_temp], groups=subjects[idx_temp]))
     idx_val = idx_temp[idx_val]
     idx_test = idx_temp[idx_test]
-    print(f"Test set: {len(idx_test)} samples (from ref_seed={ref_seed})")
+    print(f"Test set: {len(idx_test)} samples (split_seed=42)")
 
     # ---- Load raw audio (same as training) ----
     import librosa
@@ -132,6 +136,10 @@ def main():
     print(f"Loaded {len(audios_test)} test audios")
 
     # ---- Load wav2vec2 + 1D-CNN architecture once (shared across seeds) ----
+    # num_unfrozen_layers=12 because the v3-style architecture unfreezes all
+    # layers and v2 (4 unfrozen) is a strict subset — load_state_dict copies
+    # only matching keys, so either checkpoint loads cleanly into this
+    # larger container.
     local_model = os.path.expanduser(
         "~/.cache/huggingface/hub/models--facebook--wav2vec2-base/snapshots/0b5b8e868dd84f03fd87d01f9c4ff0f080fecfe8"
     )

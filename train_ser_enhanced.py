@@ -400,7 +400,8 @@ class DualLoss(nn.Module):
 
 # ===== Training =====
 
-def train_ser_model(seed: int = SEED, num_unfrozen_layers: int = 12):
+def train_ser_model(seed: int = SEED, num_unfrozen_layers: int = 4,
+                    n_epochs: int = 70):
     """Train the SER model with the given seed.
 
     Args:
@@ -409,7 +410,8 @@ def train_ser_model(seed: int = SEED, num_unfrozen_layers: int = 12):
               different but valid splits — averaging predictions across
               seeds is the standard ensemble pattern in published SER papers.
         num_unfrozen_layers: how many of the 12 wav2vec2 transformer
-              layers to unfreeze. v3 default: 12 (all).
+              layers to unfreeze. v2 default: 4 (last 4). v3 default: 12 (all).
+        n_epochs: training epochs. v2 default: 70. v3 default: 90.
     """
     os.makedirs(CHECKPOINT_DIR, exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -574,7 +576,7 @@ def train_ser_model(seed: int = SEED, num_unfrozen_layers: int = 12):
             {"params": head_params, "lr": 2e-4, "weight_decay": 5e-4},
         ]
     )
-    n_epochs = 90
+    # n_epochs defaults to 70 (v2 recipe); v3 used 90.
     # Cosine schedule with linear warmup (replaces OneCycleLR; cosine
     # anneals more smoothly on the longer 90-epoch horizon).
     total_steps = n_epochs * len(train_loader)
@@ -733,7 +735,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train SER model (wav2vec2-base + 1D-CNN)")
     parser.add_argument("--seed", type=int, default=SEED,
                         help="Random seed for splits and model init (default: 42)")
-    parser.add_argument("--num-unfrozen-layers", type=int, default=12,
-                        help="Number of wav2vec2 transformer layers to unfreeze (default: 12 = all)")
+    parser.add_argument("--num-unfrozen-layers", type=int, default=4,
+                        help="Number of wav2vec2 transformer layers to unfreeze (default: 4 = last 4, v2 recipe)")
+    parser.add_argument("--n-epochs", type=int, default=70,
+                        help="Training epochs (default: 70, v2 recipe. v3 used 90.)")
     args = parser.parse_args()
-    train_ser_model(seed=args.seed, num_unfrozen_layers=args.num_unfrozen_layers)
+    train_ser_model(seed=args.seed, num_unfrozen_layers=args.num_unfrozen_layers,
+                    n_epochs=args.n_epochs)
