@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=dtu-ser-v4
 #SBATCH -N 1
-#SBATCH --ntasks-per-node=8
-#SBATCH --gres=gpu:A100-SXM4:1
-#SBATCH --time=08:00:00
+#SBATCH --ntasks-per-node=4
+#SBATCH --gres=gpu:A100-SXM4:4
+#SBATCH --time=06:00:00
 #SBATCH --output=ser_v4.%J.out
 #SBATCH --error=ser_v4.%J.err
 #SBATCH --account=dtuarp-acc
@@ -17,10 +17,14 @@
 #   - Bidirectional attention pooling head
 #   - Supervised Contrastive (SupCon) auxiliary loss (Khosla et al. 2020)
 #   - Gradient checkpointing enabled for memory
+#   - Multi-GPU via nn.DataParallel (4× A100 per job)
 #   - 50 epochs cosine (vs 70 in v2 — large converges faster)
 #
-# Expected runtime: ~5-6 hours per seed on A100.
-# 8-hour budget is safe.
+# Expected runtime: ~3-4 hours per seed on 4× A100 (DataParallel speedup).
+# 6-hour budget is safe.
+#
+# GPU budget per job: 4× A100-40GB = 160 GB total. With DataParallel +
+# grad ckpt + batch_size=8 per GPU, peak memory ~28 GB/GPU, safe.
 #
 # Usage (from HPC login node, NEVER run compute on login):
 #   cd ~/Research/dtu/dtu-multimodal-emotion-recognition
@@ -32,8 +36,8 @@
 #   # Then run ensemble evaluation:
 #   sbatch scripts/eval_ensemble_v4.sbatch
 #
-# Pre-requisite: wav2vec2-large is auto-downloaded by train_ser_v4.sbatch
-# on the compute node (no manual download needed). ~1.2 GB, first run only.
+# Pre-requisite: wav2vec2-large is auto-downloaded by this script on the
+# compute node (no manual download needed). ~1.2 GB, first run only.
 # ============================================================
 
 set -e
@@ -51,6 +55,12 @@ echo "GPU: $(nvidia-smi -L 2>/dev/null | head -1)"
 echo "============================================================"
 
 git pull origin main || echo "  (git pull failed - continuing with local checkout)"
+
+# GPU visibility: SLURM assigns GPUs and sets CUDA_VISIBLE_DEVICES for us.
+# Each job sees only the GPUs SLURM allocated (typically 4 GPUs per job).
+# nn.DataParallel in train_ser_v4.py picks up all visible GPUs automatically.
+echo "Visible GPUs: $(nvidia-smi -L 2>/dev/null | wc -l)"
+echo "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-<unset>}"
 
 # Confirm wav2vec2-large is cached. If not, download it HERE on the
 # compute node (NOT on the login node — login-node downloads are banned).

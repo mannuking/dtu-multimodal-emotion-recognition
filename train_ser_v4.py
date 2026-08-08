@@ -75,7 +75,9 @@ ENCODER_HIDDEN = 1024
 ENCODER_LAYERS = 24
 
 # Training defaults (chosen for A100-40GB with grad checkpointing)
-BATCH_SIZE = 8
+BATCH_SIZE = 32   # Per-job total batch; with 4 GPUs in DataParallel
+                  # this means 8 samples per GPU per step. Adjust
+                  # downward if OOM.
 NUM_EPOCHS = 50  # shorter than v2/v3 because large converges faster
 LR_ENCODER_BASE = 1e-5   # 2x lower than v3 base, since large is bigger
 LR_HEAD = 1e-4
@@ -479,15 +481,23 @@ def train_v4(seed: int = SEED_DEFAULT,
 
     spec_augment = SpecAugment(p=0.6).to(device)
 
-    # Model + losses
+    # Model + losses (DataParallel if multiple GPUs visible)
     model = StrongSERHead(in_channels=ENCODER_HIDDEN, num_classes=NUM_CLASSES).to(device)
+    n_gpus = torch.cuda.device_count()
+    if n_gpus > 1:
+        print(f"   wrapping model in nn.DataParallel across {n_gpus} GPUs")
+        model = nn.DataParallel(model, device_ids=list(range(n_gpus)))
     ce_loss = ClassBalancedCE(class_weights=class_weights, label_smoothing=0.1)
     supcon_loss = SupConLoss(temperature=SUPCON_TEMP)
 
     encoder_param_groups = feature_extractor.get_layer_param_groups(
         base_lr=LR_ENCODER_BASE, weight_decay=WEIGHT_DECAY, decay_rate=0.95
     )
-    head_params = [p for p in model.parameters() if p.requires_grad]
+    # When DataParallel wraps a model, the original module lives at .module.
+    # Pull head params from the underlying module so the optimizer sees the
+    # real parameters, not the DataParallel wrapper.
+    head_module = model.module if isinstance(model, nn.DataParallel) else model
+    head_params = [p for p in head_module.parameters() if p.requires_grad]
 
     optimizer = AdamW(
         encoder_param_groups + [{"params": head_params, "lr": LR_HEAD,
@@ -561,8 +571,13 @@ def train_v4(seed: int = SEED_DEFAULT,
         saved = ""
         if val_acc > best_val:
             best_val = val_acc
+            # If model is DataParallel-wrapped, save the underlying module's
+            # state_dict (no `module.` prefix). This keeps checkpoints
+            # loadable both from this script (with DP) and from the ensemble
+            # eval script (without DP).
+            model_to_save = model.module if isinstance(model, nn.DataParallel) else model
             best_state = {
-                "model": {k: v.cpu().clone() for k, v in model.state_dict().items()},
+                "model": {k: v.cpu().clone() for k, v in model_to_save.state_dict().items()},
                 "feature_extractor": {k: v.cpu().clone() for k, v in feature_extractor.state_dict().items()},
             }
             saved = "  ✅ saved best"
@@ -584,9 +599,11 @@ def train_v4(seed: int = SEED_DEFAULT,
         print(f"\n✅ best val_acc={best_val:.4f} -> saved to {ckpt_path}")
 
     # ---- Test with TTA ----
-    model.load_state_dict(best_state["model"])
+    # Unwrap DataParallel for inference so the saved state_dict loads cleanly
+    model_to_load = model.module if isinstance(model, nn.DataParallel) else model
+    model_to_load.load_state_dict(best_state["model"])
     feature_extractor.load_state_dict(best_state["feature_extractor"])
-    model.eval()
+    model_to_load.eval()
     feature_extractor.eval()
 
     def predict_one(x):
