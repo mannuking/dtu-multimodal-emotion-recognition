@@ -32,9 +32,8 @@
 #   # Then run ensemble evaluation:
 #   sbatch scripts/eval_ensemble_v4.sbatch
 #
-# Pre-requisite: wav2vec2-large must be in HF cache. If not, download on
-# login node first (~1.2GB):
-#   python3 -c "from transformers import Wav2Vec2Model; Wav2Vec2Model.from_pretrained('facebook/wav2vec2-large')"
+# Pre-requisite: wav2vec2-large is auto-downloaded by train_ser_v4.sbatch
+# on the compute node (no manual download needed). ~1.2 GB, first run only.
 # ============================================================
 
 set -e
@@ -53,13 +52,16 @@ echo "============================================================"
 
 git pull origin main || echo "  (git pull failed - continuing with local checkout)"
 
-# Confirm wav2vec2-large is cached
+# Confirm wav2vec2-large is cached. If not, download it HERE on the
+# compute node (NOT on the login node — login-node downloads are banned).
+# Compute nodes have outbound internet via the cluster's NAT.
 LARGE_PATH="$HOME/.cache/huggingface/hub/models--facebook--wav2vec2-large"
 if [ ! -d "$LARGE_PATH" ]; then
-    echo "ERROR: wav2vec2-large not in HF cache ($LARGE_PATH)"
-    echo "Download on login node first:"
-    echo "  python3 -c \"from transformers import Wav2Vec2Model; Wav2Vec2Model.from_pretrained('facebook/wav2vec2-large')\""
-    exit 1
+    echo "wav2vec2-large not in HF cache. Downloading on compute node (~1.2 GB)..."
+    uv run python -c "from transformers import Wav2Vec2Model; Wav2Vec2Model.from_pretrained('facebook/wav2vec2-large')" || {
+        echo "ERROR: download failed. Check compute-node outbound network."
+        exit 1
+    }
 fi
 echo "wav2vec2-large cache: OK"
 
