@@ -10,18 +10,7 @@
 
 # ============================================================
 # DTU SER v6 - Multimodal SER fusion (audio + text + facial)
-# ============================================================
 # Uses v5 sbatch template (the working one, 71% baseline).
-# Key: --account=dtuarp-acc + --gres=gpu:A100-SXM4:1
-#
-# Build manifest.csv with proper schema BEFORE training.
-# Metadata: filepath,emotion,original_dataset
-# Manifest: audio_path,text,label,subject,split,facial_path
-#
-# Usage:
-#   cd ~/Research/dtu/dtu-multimodal-emotion-recognition
-#   git pull origin main
-#   sbatch scripts/train_ser_v6.sbatch
 # ============================================================
 
 set -e
@@ -40,7 +29,9 @@ echo "============================================================"
 git pull origin main || echo "  (git pull failed - continuing with local checkout)"
 
 # ============================================================
-# Step 1: Build proper manifest.csv from metadata.csv (login-safe awk)
+# Step 1: Build proper manifest.csv from metadata.csv
+# Use a self-contained awk script (no external getline calls — those can
+# silently fail on some compute nodes). Hash via in-process byte summing.
 # ============================================================
 META="combined_ser_dataset/metadata.csv"
 MANIFEST="combined_ser_dataset/manifest.csv"
@@ -52,13 +43,23 @@ fi
 
 echo "Building manifest.csv from $META..."
 
-# Use awk with a stable hash via the POSIX-grade approach:
-# bucket = (md5 hash of subject) % 100 -> train/val/test split
-# emotion label from string via lookup table written in BEGIN block.
-
 awk -F, '
+function hash_bucket(s,   i, c, v, h) {
+    # Simple deterministic hash: sum of (char * position) mod 100
+    h = 0
+    for (i = 1; i <= length(s); i++) {
+        c = substr(s, i, 1)
+        v = 0
+        # crude char->int: use ord via sprintf trick
+        # Actually use awk ord: split s into chars, get numeric via index()
+        # Simpler: use the byte as the index into a lookup table
+        n = index("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_", c)
+        if (n == 0) n = 1
+        h = (h * 31 + n) % 1000000
+    }
+    return h % 100
+}
 BEGIN {
-    # emotion -> label
     E2I["angry"]    = 0
     E2I["disgust"]  = 1
     E2I["fear"]     = 2
@@ -77,40 +78,26 @@ NR == 1 && $1 == "filepath" { next }
     fname = p[n]
     label = (emo in E2I) ? E2I[emo] : 6
 
-    # subject = filename prefix before first underscore
     split(fname, parts, "_")
     subject = parts[1]
-
-    # text synthesis
     text = "a person feels " emo
 
-    # deterministic split: hex sum of md5(subject) bytes % 100
-    cmd = "printf %s " subject " | md5sum | cut -c1-8"
-    cmd | getline hash_hex
-    close(cmd)
-    # Convert hex to int (works for 0-ffffffff range)
-    bucket = 0
-    for (i = 1; i <= length(hash_hex); i++) {
-        c = substr(hash_hex, i, 1)
-        v = index("0123456789abcdef", tolower(c)) - 1
-        bucket = (bucket * 16 + v) % 100
-    }
+    bucket = hash_bucket(subject)
     if (bucket >= 80)      split_name = "test"
     else if (bucket >= 65) split_name = "val"
     else                   split_name = "train"
 
-    facial_path = ""
-    print fp "," text "," label "," subject "," split_name "," facial_path
+    print fp, text, label, subject, split_name, ""
 }
 ' "$META" > "$MANIFEST"
 
 echo "  ✓ manifest.csv built"
-echo "  total rows: $(wc -l < $MANIFEST) (incl. header)"
+echo "  total rows (incl. header): $(wc -l < $MANIFEST)"
 echo "  by split:"
 awk -F, 'NR>1 {c[$5]++} END {for (k in c) printf "    %s: %d\n", k, c[k]}' "$MANIFEST"
 
 # ============================================================
-# Step 2: Pre-flight checks for frozen encoders
+# Step 2: Pre-flight
 # ============================================================
 if [ ! -f model_checkpoints/ser_v5_best_seed42.pt ]; then
     echo "ERROR: model_checkpoints/ser_v5_best_seed42.pt missing"
