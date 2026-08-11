@@ -480,7 +480,13 @@ def train_v5(seed: int = SEED_DEFAULT,
     skipped = 0
     t0 = time.time()
     for i in range(len(df)):
-        p = df["wav_path"].iloc[i]
+        # wav_path in metadata.csv is relative (e.g. "angry/xxx.wav")
+        # but script runs from project root, so prepend combined_ser_dataset/
+        rel_p = df["wav_path"].iloc[i]
+        if rel_p.startswith(SER_COMBINED_DIR + "/"):
+            p = rel_p
+        else:
+            p = os.path.join(SER_COMBINED_DIR, rel_p)
         try:
             audio, _ = librosa.load(p, sr=TARGET_SR, mono=True, duration=MAX_S + 0.5)
             if len(audio) < 1600:
