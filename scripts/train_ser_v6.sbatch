@@ -10,7 +10,8 @@
 
 # ============================================================
 # DTU SER v6 - Multimodal SER fusion (audio + text + facial)
-# Uses v5 sbatch template (the working one, 71% baseline).
+# Uses v5 sbatch template (71% baseline).
+# Builds manifest.csv directly from the WAV directory tree.
 # ============================================================
 
 set -e
@@ -29,67 +30,70 @@ echo "============================================================"
 git pull origin main || echo "  (git pull failed - continuing with local checkout)"
 
 # ============================================================
-# Step 1: Build proper manifest.csv from metadata.csv
-# Use a self-contained awk script (no external getline calls — those can
-# silently fail on some compute nodes). Hash via in-process byte summing.
+# Step 1: Build manifest.csv directly from the WAV directory tree
+# (the metadata.csv that came from the tarball is unreliable)
 # ============================================================
-META="combined_ser_dataset/metadata.csv"
-MANIFEST="combined_ser_dataset/manifest.csv"
+DATASET_DIR="combined_ser_dataset"
+MANIFEST="$DATASET_DIR/manifest.csv"
 
-if [ ! -f "$META" ]; then
-    echo "ERROR: $META missing. Run: bash fetch_combined_dataset.sh"
+if [ ! -d "$DATASET_DIR" ]; then
+    echo "ERROR: $DATASET_DIR missing. Run: bash fetch_combined_dataset.sh"
     exit 1
 fi
 
-echo "Building manifest.csv from $META..."
+echo "Building manifest.csv from WAV directory tree..."
 
-awk -F, '
-function hash_bucket(s,   i, c, v, h) {
-    # Simple deterministic hash: sum of (char * position) mod 100
-    h = 0
-    for (i = 1; i <= length(s); i++) {
-        c = substr(s, i, 1)
-        v = 0
-        # crude char->int: use ord via sprintf trick
-        # Actually use awk ord: split s into chars, get numeric via index()
-        # Simpler: use the byte as the index into a lookup table
-        n = index("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_", c)
-        if (n == 0) n = 1
-        h = (h * 31 + n) % 1000000
-    }
-    return h % 100
-}
-BEGIN {
-    E2I["angry"]    = 0
-    E2I["disgust"]  = 1
-    E2I["fear"]     = 2
-    E2I["happy"]    = 3
-    E2I["sad"]      = 4
-    E2I["surprise"] = 5
-    E2I["neutral"]  = 6
-    OFS = ","
-    print "audio_path,text,label,subject,split,facial_path"
-}
-NR == 1 && $1 == "filepath" { next }
+# Remove any stale metadata.csv that may have been clobbered
+rm -f "$DATASET_DIR/metadata.csv"
+
+# Use find to enumerate all WAVs, parse emotion from parent dir name
+# and subject from filename prefix. Use awk for the deterministic split.
 {
-    fp = $1
-    n = split(fp, p, "/")
-    emo = tolower(p[1])
-    fname = p[n]
-    label = (emo in E2I) ? E2I[emo] : 6
+    echo "audio_path,text,label,subject,split,facial_path"
+    find "$DATASET_DIR" -name '*.wav' -type f | awk -F/ '
+    {
+        n = NF
+        parent = $(n-1)
+        fname = $n
+        # Subject = filename prefix before first underscore
+        split(fname, parts, "_")
+        subject = parts[1]
 
-    split(fname, parts, "_")
-    subject = parts[1]
-    text = "a person feels " emo
+        # Deterministic split: pure awk hash (no external commands)
+        h = 0
+        for (i = 1; i <= length(subject); i++) {
+            c = substr(subject, i, 1)
+            v = index("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_", c)
+            if (v == 0) v = 1
+            h = (h * 31 + v) % 1000000
+        }
+        bucket = h % 100
 
-    bucket = hash_bucket(subject)
-    if (bucket >= 80)      split_name = "test"
-    else if (bucket >= 65) split_name = "val"
-    else                   split_name = "train"
+        if (bucket >= 80)      split_name = "test"
+        else if (bucket >= 65) split_name = "val"
+        else                   split_name = "train"
 
-    print fp, text, label, subject, split_name, ""
-}
-' "$META" > "$MANIFEST"
+        # emotion -> label
+        emo = parent
+        label = 6  # default neutral
+        if      (emo == "angry")    label = 0
+        else if (emo == "disgust")  label = 1
+        else if (emo == "fear")     label = 2
+        else if (emo == "happy")    label = 3
+        else if (emo == "sad")      label = 4
+        else if (emo == "surprise") label = 5
+        else if (emo == "neutral")  label = 6
+
+        # Path relative to project root (for v6 to find wavs)
+        rel = $0
+        sub(/^.*combined_ser_dataset\//, "", rel)
+
+        # text synthesis
+        text = "a person feels " emo
+
+        print rel "," text "," label "," subject "," split_name ","
+    }'
+} > "$MANIFEST"
 
 echo "  ✓ manifest.csv built"
 echo "  total rows (incl. header): $(wc -l < $MANIFEST)"
