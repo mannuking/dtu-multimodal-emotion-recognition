@@ -76,8 +76,11 @@ if out_path.exists():
 unique_wavs = df["audio_path"].unique()
 print(f"Total unique wavs: {len(unique_wavs)}")
 
+print(f"Starting transcription of {len(unique_wavs)} unique wavs...")
 for i, rel_path in enumerate(unique_wavs):
     if rel_path in transcripts:
+        if i < 3:
+            print(f"  [{i+1}/{len(unique_wavs)}] skip (already done): {rel_path}")
         continue
     full_path = Path("combined_ser_dataset") / rel_path
     if not full_path.exists():
@@ -96,10 +99,13 @@ for i, rel_path in enumerate(unique_wavs):
     except Exception as e:
         print(f"  ERROR on {rel_path}: {e}")
         transcripts[rel_path] = ""
-    if (i + 1) % 100 == 0:
-        # Save progress every 100 files (in case of crash)
+    if (i + 1) % 10 == 0:
+        # Save progress every 10 files (in case of crash)
         out_path.write_text(json.dumps(transcripts, indent=1))
         print(f"  [{i+1}/{len(unique_wavs)}] {len(transcripts)} done, last: '{transcripts[rel_path][:60]}'")
+    elif i < 3:
+        # First few files: print so we know it's not stuck
+        print(f"  [{i+1}/{len(unique_wavs)}] transcribed: '{transcripts[rel_path][:60]}'")
 
 # Final save
 out_path.write_text(json.dumps(transcripts, indent=1))
