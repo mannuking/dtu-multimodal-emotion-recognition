@@ -13,6 +13,11 @@ Only the fusion head + per-modality projections are trained. This is fast
 Expected test acc without IEMOCAP/MELD: 75-79% (vs 71% audio-only v5).
 Expected test acc with IEMOCAP+MELD:     82-88%.
 
+# Set USE_TEXT=False to disable text modality (avoids dataset leak from
+# emotive transcripts that leak the emotion label).
+# Set USE_TEXT=True to use all three modalities.
+USE_TEXT = False
+
 Usage:
     uv run python train_ser_v6_multimodal.py --seed 42
     uv run python train_ser_v6_multimodal.py --seed 42 --epochs 30
