@@ -195,18 +195,31 @@ class FrozenTextEncoder(nn.Module):
     def __init__(self, ckpt_path: str = TEXT_CKPT):
         super().__init__()
         from transformers import MobileBertModel
-        self.encoder = MobileBertModel.from_pretrained("google/mobilebert-uncased")
+        # Prefer local TER tokenizer dir (has PyTorch model.safetensors).
+        # Fall back to HF hub id (which has TF weights, requires from_tf=True).
+        ter_tokenizer_dir = (
+            Path(ckpt_path).parent / "ter_pytorch_tokenizer"
+            if ckpt_path else None
+        )
+        if ter_tokenizer_dir and ter_tokenizer_dir.exists():
+            self.encoder = MobileBertModel.from_pretrained(str(ter_tokenizer_dir))
+            print(f"✅ Loaded MobileBERT from local {ter_tokenizer_dir}")
+        else:
+            self.encoder = MobileBertModel.from_pretrained(
+                "google/mobilebert-uncased", from_tf=True
+            )
+            print("Loaded MobileBERT from HF hub (TF weights, from_tf=True)")
         if ckpt_path and Path(ckpt_path).exists():
             try:
                 sd = torch.load(ckpt_path, map_location="cpu", weights_only=False)
                 if isinstance(sd, dict) and "model_state_dict" in sd:
                     sd = sd["model_state_dict"]
                 self.encoder.load_state_dict(sd, strict=False)
-                print(f"✅ Loaded text encoder from {ckpt_path}")
+                print(f"✅ Loaded text encoder weights from {ckpt_path}")
             except Exception as e:
-                print(f"⚠️  Text ckpt load failed: {e}. Using pretrained MobileBERT.")
+                print(f"⚠️  Text ckpt load failed: {e}. Using base MobileBERT.")
         else:
-            print(f"⚠️  No text ckpt at {ckpt_path}. Using pretrained google/mobilebert-uncased.")
+            print(f"⚠️  No text ckpt at {ckpt_path}. Using base MobileBERT.")
         for p in self.encoder.parameters():
             p.requires_grad = False
         self.encoder.eval()
