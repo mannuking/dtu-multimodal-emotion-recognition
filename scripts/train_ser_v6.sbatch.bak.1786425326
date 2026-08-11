@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 # train_ser_v6.sbatch - Multimodal SER (audio + text + facial) fusion
 #
-# Submits a WHOLE-NODE A100 job on dgxnp to train the v6 multimodal fusion head.
-# dgxnp's nodeallocgpu QoS forces whole-node allocation — single-GPU is rejected.
-# Encoders (audio v5, text MobileBERT, facial ResNet-50) are FROZEN.
+# Submits a single A100 job to train the v6 multimodal fusion head.
+# Encoders (audio v5, text MobileBERT, facial ResNet-50) are frozen.
 # Only the 1.58M fusion head params are trained.
 #
 # Wall-clock: ~4 hours per seed (small fusion head, 30 epochs).
-# Memory:      256G whole-node RAM, 8x A100 (only 1 is actually used).
+# Memory:      32 GB A100 sufficient (frozen encoders stay on CPU offload).
 #
 # Usage:
 #   sbatch scripts/train_ser_v6.sbatch              # default seed=42
@@ -19,9 +18,9 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=16
-#SBATCH --gres=gpu:a100:8
-#SBATCH --mem=256G
-#SBATCH --time=04:00:00
+#SBATCH --gres=gpu:1
+#SBATCH --mem=64G
+#SBATCH --time=08:00:00
 #SBATCH --output=ser_v6.%j.out
 #SBATCH --error=ser_v6.%j.err
 
@@ -33,7 +32,7 @@ EPOCHS=${EPOCHS:-30}
 cd ~/Research/dtu/dtu-multimodal-emotion-recognition
 
 echo "=================================="
-echo "v6 Multimodal SER fusion (WHOLE-NODE)"
+echo "v6 Multimodal SER fusion"
 echo "Seed:    $SEED"
 echo "Epochs:  $EPOCHS"
 echo "Job:     $SLURM_JOB_ID"
@@ -55,15 +54,16 @@ if [ ! -f model_checkpoints/ter_pytorch_best.pt ]; then
     exit 1
 fi
 
-# Run the v6 multimodal training (force single-GPU via CUDA_VISIBLE_DEVICES=0
-# even though the whole-node gives us 8 — only 1 is actually used)
-export CUDA_VISIBLE_DEVICES=0
+# Run the v6 multimodal training
 uv run python -u train_ser_v6_multimodal.py \
     --seed "$SEED" \
     --epochs "$EPOCHS" \
-    2>&1 | tee "ser_v6_seed${SEED}.log"
+    --batch-size 16 \
+    --lr 1e-4 \
+    --audio-ckpt model_checkpoints/ser_v5_best_seed42.pt \
+    --text-ckpt model_checkpoints/ter_pytorch_best.pt \
+    --manifest combined_ser_dataset/manifest.csv
 
 echo "=================================="
-echo "v6 multimodal training complete"
-echo "End: $(date)"
+echo "Job finished: $(date)"
 echo "=================================="
