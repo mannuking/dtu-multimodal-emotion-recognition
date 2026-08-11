@@ -14,10 +14,9 @@
 # Uses v5 sbatch template (the working one, 71% baseline).
 # Key: --account=dtuarp-acc + --gres=gpu:A100-SXM4:1
 #
-# Build manifest.csv with proper schema BEFORE training:
-#   metadata.csv has: filepath,emotion,original_dataset
-#   v6 expects:       audio_path,text,label,subject,split,facial_path
-# We transform via awk (login-node safe) into combined_ser_dataset/manifest.csv
+# Build manifest.csv with proper schema BEFORE training.
+# Metadata: filepath,emotion,original_dataset
+# Manifest: audio_path,text,label,subject,split,facial_path
 #
 # Usage:
 #   cd ~/Research/dtu/dtu-multimodal-emotion-recognition
@@ -53,71 +52,62 @@ fi
 
 echo "Building manifest.csv from $META..."
 
-# Map emotion string -> integer label (0-6)
-EMOTION2ID=$(mktemp)
-cat > "$EMOTION2ID" <<'EOF'
-angry 0
-disgust 1
-fear 2
-happy 3
-sad 4
-surprise 5
-neutral 6
-EOF
+# Use awk with a stable hash via the POSIX-grade approach:
+# bucket = (md5 hash of subject) % 100 -> train/val/test split
+# emotion label from string via lookup table written in BEGIN block.
 
-# Subject-disjoint split: use last 20% of unique subjects as test, next 15% as val
-# Simpler heuristic: deterministic hash of subject % 100 -> split
-#   test  = subject_hash in [80,99]
-#   val   = subject_hash in [65,79]
-#   train = otherwise
-awk -F, -v emo2id="$EMOTION2ID" -v out="$MANIFEST" '
+awk -F, '
 BEGIN {
-    while ((getline line < emo2id) > 0) {
-        split(line, parts, " ")
-        E2I[parts[1]] = parts[2]
-    }
-    close(emo2id)
+    # emotion -> label
+    E2I["angry"]    = 0
+    E2I["disgust"]  = 1
+    E2I["fear"]     = 2
+    E2I["happy"]    = 3
+    E2I["sad"]      = 4
+    E2I["surprise"] = 5
+    E2I["neutral"]  = 6
     OFS = ","
     print "audio_path,text,label,subject,split,facial_path"
 }
-NR==1 && $1=="filepath" { next }
+NR == 1 && $1 == "filepath" { next }
 {
-    # $1 = filepath like "angry/1022_ITS_ANG_XX.wav"
-    # $2 = emotion
-    # $3 = original_dataset (CREMA-D, TESS, SAVEE, RAVDESS)
     fp = $1
     n = split(fp, p, "/")
     emo = tolower(p[1])
     fname = p[n]
-    label = E2I[emo]
-    if (label == "") label = 6  # default to neutral for unknown
+    label = (emo in E2I) ? E2I[emo] : 6
 
-    # Subject = filename prefix before first underscore (e.g. "1022_ITS_ANG_XX.wav" -> "1022")
+    # subject = filename prefix before first underscore
     split(fname, parts, "_")
     subject = parts[1]
 
-    # Synthesize text from emotion
+    # text synthesis
     text = "a person feels " emo
 
-    # Deterministic split by hashing subject
-    cmd = "echo -n " subject " | cksum | awk "{print \$1}""
-    cmd | getline h
+    # deterministic split: hex sum of md5(subject) bytes % 100
+    cmd = "printf %s " subject " | md5sum | cut -c1-8"
+    cmd | getline hash_hex
     close(cmd)
-    bucket = (h % 100)
+    # Convert hex to int (works for 0-ffffffff range)
+    bucket = 0
+    for (i = 1; i <= length(hash_hex); i++) {
+        c = substr(hash_hex, i, 1)
+        v = index("0123456789abcdef", tolower(c)) - 1
+        bucket = (bucket * 16 + v) % 100
+    }
     if (bucket >= 80)      split_name = "test"
     else if (bucket >= 65) split_name = "val"
     else                   split_name = "train"
 
-    facial_path = ""  # no facial crops in v6 (v7 would add)
+    facial_path = ""
     print fp "," text "," label "," subject "," split_name "," facial_path
-}' "$META" > "$MANIFEST"
-
-rm -f "$EMOTION2ID"
+}
+' "$META" > "$MANIFEST"
 
 echo "  ✓ manifest.csv built"
-echo "  total rows: $(wc -l < $MANIFEST)"
+echo "  total rows: $(wc -l < $MANIFEST) (incl. header)"
 echo "  by split:"
-awk -F, 'NR>1 {c[$5]++} END {for (k in c) print "    "k": "c[k]}' "$MANIFEST"
+awk -F, 'NR>1 {c[$5]++} END {for (k in c) printf "    %s: %d\n", k, c[k]}' "$MANIFEST"
 
 # ============================================================
 # Step 2: Pre-flight checks for frozen encoders
