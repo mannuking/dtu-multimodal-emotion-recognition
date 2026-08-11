@@ -285,6 +285,8 @@ def evaluate(encoders, fusion_model, loader, device):
 
             audio_emb = encoders["audio"](audio)
             text_emb = encoders["text"](ids, mask)
+            if not USE_TEXT:
+                text_emb = torch.zeros_like(text_emb)
             facial_emb = encoders["facial"](facial)
 
             out = fusion_model.forward_embeddings(audio_emb, text_emb, facial_emb)
@@ -314,6 +316,10 @@ def train_one_epoch(encoders, fusion_model, loader, optimizer, device, epoch, to
         with torch.no_grad():
             audio_emb = encoders["audio"](audio)
             text_emb = encoders["text"](ids, mask)
+            if not USE_TEXT:
+                # Zero out text embedding to test audio+facial only
+                # (avoids dataset leak from emotive transcripts)
+                text_emb = torch.zeros_like(text_emb)
             facial_emb = encoders["facial"](facial)
 
         # Trainable fusion head
