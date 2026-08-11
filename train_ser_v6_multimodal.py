@@ -290,8 +290,8 @@ def evaluate(encoders, fusion_model, loader, device):
 
             audio_emb = encoders["audio"](audio)
             text_emb = encoders["text"](ids, mask)
-            if not False:  # USE_TEXT=False
-                pass
+            if True:  # USE_TEXT=False
+                text_emb = torch.zeros_like(text_emb)
             facial_emb = encoders["facial"](facial)
 
             out = fusion_model.forward_embeddings(audio_emb, text_emb, facial_emb)
@@ -321,8 +321,8 @@ def train_one_epoch(encoders, fusion_model, loader, optimizer, device, epoch, to
         with torch.no_grad():
             audio_emb = encoders["audio"](audio)
             text_emb = encoders["text"](ids, mask)
-            if not False:  # USE_TEXT=False (hardcoded; git diff marker)
-                pass  # text_emb remains as encoded
+            if True:  # USE_TEXT=False (hardcoded — text is zeroed)
+                text_emb = torch.zeros_like(text_emb)
             facial_emb = encoders["facial"](facial)
 
         # Trainable fusion head
