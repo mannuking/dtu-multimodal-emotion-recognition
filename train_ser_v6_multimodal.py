@@ -364,7 +364,26 @@ def main():
     }
 
     # Fusion head (trainable)
-    cfg = FusionConfig(use_supcon=not args.disable_supcon)
+    # Auto-detect actual encoder output dims (in case the loaded model has
+    # a different hidden size than the FusionConfig defaults — e.g. a
+    # base-size wav2vec2 with 512-dim hidden instead of large 1024-dim).
+    import torch as _torch
+    with _torch.no_grad():
+        _dummy_audio = _torch.zeros(1, 16000, device=DEVICE)
+        _dummy_ids = _torch.zeros(1, 64, dtype=_torch.long, device=DEVICE)
+        _dummy_mask = _torch.ones(1, 64, dtype=_torch.long, device=DEVICE)
+        _dummy_face = _torch.zeros(1, 3, 224, 224, device=DEVICE)
+        _audio_dim = encoders["audio"](_dummy_audio).shape[-1]
+        _text_dim = encoders["text"](_dummy_ids, _dummy_mask).shape[-1]
+        _facial_dim = encoders["facial"](_dummy_face).shape[-1]
+    print(f"Encoder dims: audio={_audio_dim} text={_text_dim} facial={_facial_dim}")
+
+    cfg = FusionConfig(
+        use_supcon=not args.disable_supcon,
+        audio_dim=_audio_dim,
+        text_dim=_text_dim,
+        facial_dim=_facial_dim,
+    )
     fusion_model = MultimodalSER(cfg).to(DEVICE)
     trainable_params = sum(p.numel() for p in fusion_model.parameters() if p.requires_grad)
     print(f"Trainable params (fusion head): {trainable_params:,}")
