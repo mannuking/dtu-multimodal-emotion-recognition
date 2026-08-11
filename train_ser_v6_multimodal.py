@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 train_ser_v6_multimodal.py - Multimodal SER (audio + text + facial) fusion.
 
@@ -22,8 +24,6 @@ Usage:
 # emotive transcripts that leak the emotion label).
 # Set USE_TEXT=True to use all three modalities.
 USE_TEXT = False
-
-from __future__ import annotations
 
 import argparse
 import json
