@@ -261,8 +261,9 @@ class FrozenFacialEncoder(nn.Module):
 
 # ---------- Training loop ----------
 
-def evaluate(model, fusion_model, loader, device):
-    model.eval()
+def evaluate(encoders, fusion_model, loader, device):
+    # encoders is a dict of frozen modules — they don't need eval mode
+    # (they're already frozen via requires_grad=False)
     fusion_model.eval()
     all_preds, all_labels = [], []
     with torch.no_grad():
@@ -273,9 +274,9 @@ def evaluate(model, fusion_model, loader, device):
             facial = batch["facial"].to(device)
             labels = batch["label"].to(device)
 
-            audio_emb = model["audio"](audio)
-            text_emb = model["text"](ids, mask)
-            facial_emb = model["facial"](facial)
+            audio_emb = encoders["audio"](audio)
+            text_emb = encoders["text"](ids, mask)
+            facial_emb = encoders["facial"](facial)
 
             out = fusion_model.forward_embeddings(audio_emb, text_emb, facial_emb)
             preds = out["logits"].argmax(dim=-1)
