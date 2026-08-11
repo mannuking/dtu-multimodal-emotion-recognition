@@ -302,9 +302,9 @@ def train_one_epoch(encoders, fusion_model, loader, optimizer, device, epoch, to
 
         # Frozen encoders (no grad)
         with torch.no_grad():
-            audio_emb = model["audio"](audio)
-            text_emb = model["text"](ids, mask)
-            facial_emb = model["facial"](facial)
+            audio_emb = encoders["audio"](audio)
+            text_emb = encoders["text"](ids, mask)
+            facial_emb = encoders["facial"](facial)
 
         # Trainable fusion head
         out = fusion_model.forward_embeddings(audio_emb, text_emb, facial_emb, labels)
