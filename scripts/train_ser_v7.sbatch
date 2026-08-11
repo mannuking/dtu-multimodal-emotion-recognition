@@ -53,7 +53,7 @@ export HF_DATASETS_OFFLINE=1
 # Mixed-precision for ~1.5x speedup
 export V7_USE_AMP=1
 
-SEED="$SEED" uv run python -u train_ser_v7.py --seed "$SEED" --epochs 60
+SEED="$SEED" uv run python -u train_ser_v7.py --seed "$SEED" --n-epochs 60
 RET=$?
 
 echo "============================================================"
