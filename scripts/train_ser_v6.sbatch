@@ -11,7 +11,7 @@
 # ============================================================
 # DTU SER v6 - Multimodal SER fusion (audio + text + facial)
 # Uses v5 sbatch template (71% baseline).
-# Builds manifest.csv directly from the WAV directory tree.
+# Builds manifest.csv from WAV tree; forces HF offline mode.
 # ============================================================
 
 set -e
@@ -29,9 +29,15 @@ echo "============================================================"
 
 git pull origin main || echo "  (git pull failed - continuing with local checkout)"
 
+# CRITICAL: force HuggingFace to use local cache only — compute nodes have
+# flaky outbound network. Without this, transformers tries to download
+# MobileBERT/wav2vec2 every run and times out.
+export HF_HUB_OFFLINE=1
+export TRANSFORMERS_OFFLINE=1
+export HF_DATASETS_OFFLINE=1
+
 # ============================================================
-# Step 1: Build manifest.csv directly from the WAV directory tree
-# (the metadata.csv that came from the tarball is unreliable)
+# Step 1: Build manifest.csv from WAV directory tree
 # ============================================================
 DATASET_DIR="combined_ser_dataset"
 MANIFEST="$DATASET_DIR/manifest.csv"
@@ -41,26 +47,23 @@ if [ ! -d "$DATASET_DIR" ]; then
     exit 1
 fi
 
+# Clean up any clobbered metadata.csv from previous failed runs
+rm -f "$DATASET_DIR/metadata.csv" "$DATASET_DIR/manifest.csv"
+
 echo "Building manifest.csv from WAV directory tree..."
 
-# Remove any stale metadata.csv that may have been clobbered
-rm -f "$DATASET_DIR/metadata.csv"
-
-# Use find to enumerate all WAVs, parse emotion from parent dir name
-# and subject from filename prefix. Use awk for the deterministic split.
 {
     echo "audio_path,text,label,subject,split,facial_path"
-    # Exclude macOS resource fork files (._*) that came from tarball extraction
+    # Exclude macOS resource fork files (._*)
     find "$DATASET_DIR" -name '*.wav' -type f ! -name '._*' | awk -F/ '
     {
         n = NF
         parent = $(n-1)
         fname = $n
-        # Subject = filename prefix before first underscore
         split(fname, parts, "_")
         subject = parts[1]
 
-        # Deterministic split: pure awk hash (no external commands)
+        # Deterministic split: pure awk hash
         h = 0
         for (i = 1; i <= length(subject); i++) {
             c = substr(subject, i, 1)
@@ -74,9 +77,8 @@ rm -f "$DATASET_DIR/metadata.csv"
         else if (bucket >= 65) split_name = "val"
         else                   split_name = "train"
 
-        # emotion -> label
         emo = parent
-        label = 6  # default neutral
+        label = 6
         if      (emo == "angry")    label = 0
         else if (emo == "disgust")  label = 1
         else if (emo == "fear")     label = 2
@@ -85,11 +87,9 @@ rm -f "$DATASET_DIR/metadata.csv"
         else if (emo == "surprise") label = 5
         else if (emo == "neutral")  label = 6
 
-        # Path relative to project root (for v6 to find wavs)
         rel = $0
         sub(/^.*combined_ser_dataset\//, "", rel)
 
-        # text synthesis
         text = "a person feels " emo
 
         print rel "," text "," label "," subject "," split_name ","
