@@ -95,10 +95,19 @@ from torch.utils.data import WeightedRandomSampler
 import numpy as np
 
 def make_balanced_sampler(dataset):
-    """WeightedRandomSampler that oversamples minority classes."""
+    """WeightedRandomSampler that oversamples minority classes.
+
+    Works with both dict-style ({"label": ...}) and tuple-style
+    ((x, y)) datasets. For tuples, assumes the LAST element is the label.
+    """
     labels = []
     for i in range(len(dataset)):
-        labels.append(int(dataset[i]["label"]))
+        item = dataset[i]
+        if isinstance(item, dict):
+            labels.append(int(item["label"]))
+        else:
+            # Tuple: (audio, label) or (audio, label, ...)
+            labels.append(int(item[-1]))
     class_counts = np.bincount(labels)
     class_weights = 1.0 / class_counts
     sample_weights = class_weights[labels]
