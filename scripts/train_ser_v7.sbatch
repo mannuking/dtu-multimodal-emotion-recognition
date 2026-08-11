@@ -53,6 +53,48 @@ export HF_DATASETS_OFFLINE=1
 # Mixed-precision for ~1.5x speedup
 export V7_USE_AMP=1
 
+# Convert manifest.csv (v6 ASR format) to metadata.csv (v5/v7 format)
+uv run python - <<'PYEOF'
+import pandas as pd
+import os
+from pathlib import Path
+
+src = Path("combined_ser_dataset/manifest.csv")
+dst = Path("combined_ser_dataset/metadata.csv")
+
+if not src.exists():
+    raise SystemExit(f"ERROR: {src} not found. Run ASR preprocessing first.")
+
+df = pd.read_csv(src)
+print(f"   loaded {len(df)} rows from manifest.csv")
+
+# Build metadata.csv in v5/v7 format
+# Need: wav_path (relative to combined_ser_dataset), emotion
+EMOTIONS = ["angry", "disgust", "fear", "happy", "neutral", "sad", "surprise"]
+
+# label is int 0-6, emotion is in audio_path directory
+def get_emotion(row):
+    # Prefer text-derived emotion if path is consistent
+    emo = row["audio_path"].split("/")[0].lower()
+    if emo in EMOTIONS:
+        return emo
+    # Fallback to label
+    if "label" in df.columns and 0 <= int(row["label"]) < 7:
+        return EMOTIONS[int(row["label"])]
+    return emo
+
+out = pd.DataFrame({
+    "wav_path": df["audio_path"].apply(lambda p: p),  # relative to combined_ser_dataset
+    "emotion": df.apply(get_emotion, axis=1),
+    "subject": df["subject"].astype(str),
+    "split": df["split"],
+})
+out.to_csv(dst, index=False)
+print(f"   wrote {len(out)} rows to {dst}")
+print(f"   emotion distribution:
+{out['emotion'].value_counts()}")
+PYEOF
+
 SEED="$SEED" uv run python -u train_ser_v7.py --seed "$SEED" --n-epochs 60
 RET=$?
 
