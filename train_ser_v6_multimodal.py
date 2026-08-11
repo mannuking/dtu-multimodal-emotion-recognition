@@ -286,8 +286,9 @@ def evaluate(model, fusion_model, loader, device):
     return acc, f1, all_preds, all_labels
 
 
-def train_one_epoch(model, fusion_model, loader, optimizer, device, epoch, total_epochs):
-    model.train()  # fusion_model will be in train mode too (frozen encoders don't update)
+def train_one_epoch(encoders, fusion_model, loader, optimizer, device, epoch, total_epochs):
+    # encoders is a dict of frozen modules — they don't need train mode
+    # (they're already frozen via requires_grad=False)
     fusion_model.train()
     total_loss = 0.0
     n = 0
