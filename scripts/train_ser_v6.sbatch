@@ -1,18 +1,8 @@
 #!/usr/bin/env bash
 # train_ser_v6.sbatch - Multimodal SER (audio + text + facial) fusion
-#
-# Submits a WHOLE-NODE A100 job on dgxnp to train the v6 multimodal fusion head.
-# dgxnp's nodeallocgpu QoS forces whole-node allocation — single-GPU is rejected.
-# Encoders (audio v5, text MobileBERT, facial ResNet-50) are FROZEN.
-# Only the 1.58M fusion head params are trained.
-#
-# Wall-clock: ~4 hours per seed (small fusion head, 30 epochs).
-# Memory:      256G whole-node RAM, 8x A100 (only 1 is actually used).
-#
-# Usage:
-#   sbatch scripts/train_ser_v6.sbatch              # default seed=42
-#   SEED=43 sbatch scripts/train_ser_v6.sbatch      # override seed
-#   EPOCHS=20 sbatch scripts/train_ser_v6.sbatch    # override epochs
+# DGX-only — requires a QoS that permits dgxnp submission (maxnodeal+ / nltm-asr / similar)
+# Single-A100 used via CUDA_VISIBLE_DEVICES=0, but gres requests whole-node to satisfy
+# the nodeallocgpu partition constraint.
 
 #SBATCH --job-name=dtu-ser-v6-multimodal
 #SBATCH --partition=dgxnp
@@ -26,44 +16,17 @@
 #SBATCH --error=ser_v6.%j.err
 
 set -euo pipefail
-
 SEED=${SEED:-42}
 EPOCHS=${EPOCHS:-30}
-
 cd ~/Research/dtu/dtu-multimodal-emotion-recognition
-
-echo "=================================="
-echo "v6 Multimodal SER fusion (WHOLE-NODE)"
-echo "Seed:    $SEED"
-echo "Epochs:  $EPOCHS"
-echo "Job:     $SLURM_JOB_ID"
-echo "Node:    $SLURM_NODELIST"
-echo "Start:   $(date)"
-echo "=================================="
-
-# Make sure the v5 audio checkpoint is in place
+echo "v6 multimodal DGX | seed=$SEED epochs=$EPOCHS job=$SLURM_JOB_ID node=$SLURM_NODELIST start=$(date)"
 if [ ! -f model_checkpoints/ser_v5_best_seed42.pt ]; then
-    echo "ERROR: model_checkpoints/ser_v5_best_seed42.pt missing"
-    echo "Train v5 first (sbatch scripts/train_ser_v5_ensemble.sbatch)"
+    echo "ERROR: v5 audio checkpoint missing"
     exit 1
 fi
-
-# Make sure text encoder is in place
 if [ ! -f model_checkpoints/ter_pytorch_best.pt ]; then
-    echo "ERROR: model_checkpoints/ter_pytorch_best.pt missing"
-    echo "Train text encoder first (sbatch scripts/train_ter.sbatch)"
+    echo "ERROR: text encoder checkpoint missing"
     exit 1
 fi
-
-# Run the v6 multimodal training (force single-GPU via CUDA_VISIBLE_DEVICES=0
-# even though the whole-node gives us 8 — only 1 is actually used)
 export CUDA_VISIBLE_DEVICES=0
-uv run python -u train_ser_v6_multimodal.py \
-    --seed "$SEED" \
-    --epochs "$EPOCHS" \
-    2>&1 | tee "ser_v6_seed${SEED}.log"
-
-echo "=================================="
-echo "v6 multimodal training complete"
-echo "End: $(date)"
-echo "=================================="
+uv run python -u train_ser_v6_multimodal.py --seed "$SEED" --epochs "$EPOCHS" 2>&1 | tee "ser_v6_seed${SEED}.log"
