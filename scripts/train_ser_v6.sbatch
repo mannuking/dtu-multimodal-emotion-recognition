@@ -50,7 +50,8 @@ rm -f "$DATASET_DIR/metadata.csv"
 # and subject from filename prefix. Use awk for the deterministic split.
 {
     echo "audio_path,text,label,subject,split,facial_path"
-    find "$DATASET_DIR" -name '*.wav' -type f | awk -F/ '
+    # Exclude macOS resource fork files (._*) that came from tarball extraction
+    find "$DATASET_DIR" -name '*.wav' -type f ! -name '._*' | awk -F/ '
     {
         n = NF
         parent = $(n-1)
