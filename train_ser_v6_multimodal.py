@@ -144,7 +144,16 @@ class MultimodalSERDataset(Dataset):
                 pass
 
         # ----- Label -----
-        label = int(EMOTIONS.index(row["label"])) if row["label"] in EMOTIONS else 0
+        # The manifest CSV has label as an integer (0-6) — use directly.
+        # (Original code expected a string in EMOTIONS, but the manifest
+        # produced by the sbatch writes integer labels. Fall back to 0
+        # if for some reason label is invalid.)
+        try:
+            label = int(row["label"])
+            if label < 0 or label >= len(EMOTIONS):
+                label = 0
+        except (ValueError, TypeError):
+            label = 0
 
         return {
             "audio": torch.from_numpy(audio).float(),
