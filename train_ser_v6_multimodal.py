@@ -13,15 +13,15 @@ Only the fusion head + per-modality projections are trained. This is fast
 Expected test acc without IEMOCAP/MELD: 75-79% (vs 71% audio-only v5).
 Expected test acc with IEMOCAP+MELD:     82-88%.
 
-# Set USE_TEXT=False to disable text modality (avoids dataset leak from
-# emotive transcripts that leak the emotion label).
-# Set USE_TEXT=True to use all three modalities.
-USE_TEXT = False
-
 Usage:
     uv run python train_ser_v6_multimodal.py --seed 42
     uv run python train_ser_v6_multimodal.py --seed 42 --epochs 30
 """
+
+# Set USE_TEXT=False to disable text modality (avoids dataset leak from
+# emotive transcripts that leak the emotion label).
+# Set USE_TEXT=True to use all three modalities.
+USE_TEXT = False
 
 from __future__ import annotations
 
@@ -290,7 +290,7 @@ def evaluate(encoders, fusion_model, loader, device):
 
             audio_emb = encoders["audio"](audio)
             text_emb = encoders["text"](ids, mask)
-            if True:  # USE_TEXT=False
+            if not USE_TEXT:
                 text_emb = torch.zeros_like(text_emb)
             facial_emb = encoders["facial"](facial)
 
@@ -321,7 +321,7 @@ def train_one_epoch(encoders, fusion_model, loader, optimizer, device, epoch, to
         with torch.no_grad():
             audio_emb = encoders["audio"](audio)
             text_emb = encoders["text"](ids, mask)
-            if True:  # USE_TEXT=False (hardcoded — text is zeroed)
+            if not USE_TEXT:
                 text_emb = torch.zeros_like(text_emb)
             facial_emb = encoders["facial"](facial)
 
