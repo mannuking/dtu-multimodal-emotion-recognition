@@ -6,7 +6,7 @@
 #SBATCH --time=08:00:00
 #SBATCH --output=ser_v8.%A_%a.out
 #SBATCH --error=ser_v8.%A_%a.err
-#SBATCH --account=kaurg
+#SBATCH --account=dtuarp-acc
 
 # ============================================================
 # DTU SER v8 — V/A-conditioned CMT + dialog context

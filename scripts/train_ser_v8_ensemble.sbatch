@@ -6,7 +6,7 @@
 #SBATCH --time=02:00:00
 #SBATCH --output=ser_v8_ens.%A.out
 #SBATCH --error=ser_v8_ens.%A.err
-#SBATCH --account=kaurg
+#SBATCH --account=dtuarp-acc
 
 # ============================================================
 # DTU SER v8 — ensemble orchestrator
