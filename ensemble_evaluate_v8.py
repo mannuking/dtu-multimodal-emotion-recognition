@@ -83,7 +83,8 @@ def main():
         all_labels = None
         all_probs = None
         for name, fusion, ctx_layer in models:
-            ctx_buffer = DialogContextBuffer(window=cfg.dialog_window, dim=cfg.dialog_dim)
+            ctx_buffer = DialogContextBuffer(window=cfg.dialog_window,
+                                             dim=cfg.proj_dim * 2)
             ctx_buffer.reset()
             probs_one = []
             labs_one = []

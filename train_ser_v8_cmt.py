@@ -184,7 +184,8 @@ def main():
     best_val_acc = 0.0
     best_epoch = -1
     history = []
-    ctx_buffer = DialogContextBuffer(window=cfg.dialog_window, dim=cfg.dialog_dim)
+    ctx_buffer = DialogContextBuffer(window=cfg.dialog_window,
+                                     dim=cfg.proj_dim * 2)
     ctx_buffer.reset()
 
     for epoch in range(1, args.epochs + 1):
