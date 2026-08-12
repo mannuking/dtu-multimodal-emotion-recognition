@@ -50,17 +50,21 @@ class VAAttentionBias(nn.Module):
     from (V, A, D). This is the heart of the V/A-conditioning novelty.
 
     Math:
-        B = MLP(V, A, D)            # (B, n_heads, T_a, T_t)
+        B = MLP(V, A, D)            # (B, n_heads) — one scalar per head
         attn = softmax(QK^T/sqrt(d) + B) V
+        B is broadcast to (B, n_heads, T_a, T_t) so each head gets one
+        utterance-level scalar added to all its attention logits.
     """
     def __init__(self, va_dim: int, proj_dim: int, n_heads: int):
         super().__init__()
         self.n_heads = n_heads
-        self.proj_dim = proj_dim
+        # Output dim is n_heads (one scalar per head), NOT n_heads * proj_dim.
+        # The proj_dim arg is kept for API compat but unused here — each
+        # head gets a single scalar that biases attention direction uniformly.
         self.mlp = nn.Sequential(
             nn.Linear(va_dim, proj_dim),
             nn.GELU(),
-            nn.Linear(proj_dim, n_heads * proj_dim),
+            nn.Linear(proj_dim, n_heads),
         )
 
     def forward(self, va: torch.Tensor, T_a: int, T_t: int) -> torch.Tensor:
@@ -73,12 +77,8 @@ class VAAttentionBias(nn.Module):
             bias: (B, n_heads, T_a, T_t) — additive bias added to attn logits
         """
         B = va.size(0)
-        # (B, 3) -> (B, n_heads * proj_dim) -> (B, n_heads, 1, 1)
-        # Broadcast to (T_a, T_t) — bias is per-batch, per-head, not per-token-pair
-        # This is a deliberate choice: V/A is a single utterance-level value
-        # and biases the attention direction uniformly across all token pairs.
-        h = self.mlp(va)                        # (B, n_heads * proj_dim)
-        h = h.view(B, self.n_heads, 1, 1)      # (B, n_heads, 1, 1)
+        h = self.mlp(va)                    # (B, n_heads)
+        h = h.view(B, self.n_heads, 1, 1)   # (B, n_heads, 1, 1)
         return h.expand(B, self.n_heads, T_a, T_t)
 
 
