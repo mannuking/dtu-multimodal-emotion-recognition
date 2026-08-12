@@ -1,0 +1,2 @@
+utterance_id,session,speaker,dialog,emotion,valence,arousal,dominance,wav_path,start_time,end_time,transcript
+Ses05F_impro03_F043,Session5,F,Ses05F_impro03,happy,,,,data/iemocap/Session5/dialog/wav/Ses05F_impro03.wav,207.46,209.76,I am very
