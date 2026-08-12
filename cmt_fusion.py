@@ -41,7 +41,12 @@ class FusionConfig:
     dropout: float = 0.3
     dialog_context: bool = True
     dialog_window: int = 10
-    dialog_dim: int = 256
+    # dialog_dim is set to proj_dim * 2 (audio_pooled + text_pooled = 512)
+    # so the dialog buffer + transformer operate on the same feature dim
+    # as the CMT's penultimate fused features.
+    @property
+    def dialog_dim(self) -> int:
+        return self.proj_dim * 2
 
 
 class VAAttentionBias(nn.Module):
