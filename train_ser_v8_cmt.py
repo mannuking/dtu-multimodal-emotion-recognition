@@ -200,7 +200,7 @@ def main():
             attn_mask = batch["attention_mask"].to(device)
             va = torch.stack([
                 batch["valence"], batch["arousal"], batch["dominance"]
-            ], dim=1).to(device)
+            ], dim=1).to(device).float()
             emotion = batch["emotion"].to(device)
             dialog = batch["dialog"][0]
 
@@ -248,7 +248,7 @@ def main():
                 attn_mask = batch["attention_mask"].to(device)
                 va = torch.stack([
                     batch["valence"], batch["arousal"], batch["dominance"]
-                ], dim=1).to(device)
+                ], dim=1).to(device).float()
                 emotion = batch["emotion"].to(device)
                 dialog = batch["dialog"][0]
                 audio_h = encoders.encode_audio(wav)
