@@ -152,6 +152,35 @@ def make_loso_splits(manifest: list[dict]) -> list[tuple[set, set]]:
     return splits
 
 
+def make_random_kfold_splits(manifest: list[dict], n_folds: int = 5,
+                             seed: int = 42) -> list[tuple[list[int], list[int]]]:
+    """
+    MemoCMT-style random k-fold CV: split utterances randomly into n_folds
+    buckets, then for each fold k: train = all-but-bucket-k, val = bucket-k.
+
+    Returns list of (train_indices, val_indices) tuples, one per fold.
+    Index refers to position in the manifest list.
+    """
+    rng = np.random.RandomState(seed)
+    n = len(manifest)
+    indices = np.arange(n)
+    rng.shuffle(indices)
+    fold_sizes = [n // n_folds] * n_folds
+    for i in range(n % n_folds):
+        fold_sizes[i] += 1
+    folds = []
+    cursor = 0
+    for size in fold_sizes:
+        folds.append(indices[cursor:cursor + size].tolist())
+        cursor += size
+    splits = []
+    for k in range(n_folds):
+        val_idx = folds[k]
+        train_idx = [i for j, f in enumerate(folds) if j != k for i in f]
+        splits.append((train_idx, val_idx))
+    return splits
+
+
 # Tiny sanity test (run with `python iemocap_dataset.py`)
 if __name__ == "__main__":
     import sys
