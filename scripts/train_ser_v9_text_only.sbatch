@@ -7,41 +7,17 @@
 #SBATCH --output=ser_v9_text.%A_%a.out
 #SBATCH --error=ser_v9_text.%A_%a.err
 #SBATCH --account=dtuarp-acc
-
-# ============================================================
-# DTU SER v9 — Text-only baseline (BERT-base-uncased frozen + linear head)
-# 3 seeds × 5 folds = 15 jobs. Submit with:
-#   sbatch --array=0-14 scripts/train_ser_v9_text_only.sbatch
-# where:
-#   FOLD=$((SLURM_ARRAY_TASK_ID % 5))     # 0-4
-#   SEED=$((42 + SLURM_ARRAY_TASK_ID / 5)) # 42, 43, 44
-# ============================================================
-
 set -e
 cd "$SLURM_SUBMIT_DIR"
-export HF_HUB_OFFLINE=0
-export TRANSFORMERS_OFFLINE=0
+export HF_HUB_OFFLINE=1
+export TRANSFORMERS_OFFLINE=1
 export TOKENIZERS_PARALLELISM=false
-
-git pull origin main || echo "  (git pull failed - continuing)"
-
-[[ -f data/iemocap/manifest.csv ]] || {
-    echo "ERROR: data/iemocap/manifest.csv missing"
-    exit 1
-}
-
+echo "=== TEXT job $SLURM_ARRAY_TASK_ID on $(hostname) at $(date) ==="
+echo "GPU: $(nvidia-smi -L 2>/dev/null | head -1)"
+[[ -f data/iemocap/manifest.csv ]] || { echo "FATAL: manifest missing"; exit 1; }
+[[ -d data/iemocap/Session1/dialog/wav ]] || { echo "FATAL: IEMOCAP audio dir missing"; exit 1; }
 FOLD=$((SLURM_ARRAY_TASK_ID % 5))
 SEED=$((42 + SLURM_ARRAY_TASK_ID / 5))
-
-echo "============================================================"
-echo "v9 TEXT-ONLY: ARRAY_TASK_ID=${SLURM_ARRAY_TASK_ID}"
-echo "  Fold: $FOLD  Seed: $SEED  Host: $(hostname)"
-echo "  GPU: $(nvidia-smi -L 2>/dev/null | head -1)"
-echo "  Started: $(date)"
-echo "============================================================"
-
+echo "Fold=$FOLD Seed=$SEED"
 uv run python -u train_ser_v9_text_only.py --fold "$FOLD" --seed "$SEED" 2>&1
-
-echo "============================================================"
-echo "TEXT fold $FOLD seed $SEED done: $(date)"
-echo "============================================================"
+echo "=== TEXT fold $FOLD seed $SEED done: $(date) ==="
