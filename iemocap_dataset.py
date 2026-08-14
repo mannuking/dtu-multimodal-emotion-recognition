@@ -107,15 +107,21 @@ class IEMOCAPDataset(Dataset):
         wav = slice_dialog_wav(row["wav_path"], row["start_time"],
                                 row["end_time"], self.target_sr)
         text = str(row.get("transcript", "") or "")
-        enc = self.tokenizer(
-            text,
-            padding="max_length",
-            truncation=True,
-            max_length=self.max_text_len,
-            return_tensors="pt",
-        )
-        input_ids = enc["input_ids"].squeeze(0)
-        attn_mask = enc["attention_mask"].squeeze(0)
+        if self.tokenizer is not None:
+            enc = self.tokenizer(
+                text,
+                padding="max_length",
+                truncation=True,
+                max_length=self.max_text_len,
+                return_tensors="pt",
+            )
+            input_ids = enc["input_ids"].squeeze(0)
+            attn_mask = enc["attention_mask"].squeeze(0)
+        else:
+            # Audio-only baseline: no tokenizer needed, return zero tensors so the
+            # collate path doesn't crash. Models that ignore them never look.
+            input_ids = torch.zeros(self.max_text_len, dtype=torch.long)
+            attn_mask = torch.zeros(self.max_text_len, dtype=torch.long)
         emo_idx = EMOTION_TO_IDX[row["emotion"]]
         item = {
             "wav": wav,
