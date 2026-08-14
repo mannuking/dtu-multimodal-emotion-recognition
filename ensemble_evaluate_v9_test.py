@@ -123,8 +123,19 @@ def main():
     for ckpt_path in ckpt_paths:
         fusion, ckpt = load_fusion(ckpt_path, device)
         fold = ckpt["fold"]
-        seed = ckpt.get("seed", 42)
+        # Source of truth: the FILENAME — sbatch writes seed into the path.
+        # v9 baseline ckpt dict doesn't store "seed" (saved without it),
+        # so ckpt.get("seed", 42) returns 42 for everything. Parse from name.
+        import re
+        m = re.search(r"fold(\d+)_seed(\d+)\.pt$", ckpt_path.name)
+        if not m:
+            print(f"  SKIP {ckpt_path.name}: cannot parse fold/seed from filename")
+            continue
+        fold_from_name, seed = int(m.group(1)), int(m.group(2))
+        # Trust the filename over the saved dict (handles re-saves across branches)
+        fold = fold_from_name
         if seed not in args.seeds:
+            print(f"  SKIP fold{fold} seed{seed}: not in --seeds {args.seeds}")
             continue
 
         splits = make_random_kfold_splits(manifest, n_folds=5, seed=seed)
