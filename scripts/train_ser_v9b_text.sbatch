@@ -9,9 +9,22 @@
 #SBATCH --account=dtuarp-acc
 set -e
 cd "$SLURM_SUBMIT_DIR"
+export TOKENIZERS_PARALLELISM=false
+
+# Warmup: job 0 of the array downloads the model to the shared HF cache with
+# HF_HUB_OFFLINE=0. All other sub-jobs run offline once the cache is populated.
+if [ "$SLURM_ARRAY_TASK_ID" = "0" ]; then
+  echo "=== V9B TEXT warmup: downloading microsoft/deberta-v3-base to HF cache ==="
+  unset HF_HUB_OFFLINE
+  unset TRANSFORMERS_OFFLINE
+  uv run python -c "from transformers import AutoModel, AutoTokenizer; \
+    m = AutoModel.from_pretrained('microsoft/deberta-v3-base'); \
+    t = AutoTokenizer.from_pretrained('microsoft/deberta-v3-base'); \
+    print('DeBERTa-v3-base cached:', t.vocab_size, 'tokens,', sum(p.numel() for p in m.parameters()), 'params')"
+fi
+
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
-export TOKENIZERS_PARALLELISM=false
 echo "=== V9B TEXT job $SLURM_ARRAY_TASK_ID on $(hostname) at $(date) ==="
 echo "GPU: $(nvidia-smi -L 2>/dev/null | head -1)"
 [[ -f data/iemocap/manifest.csv ]] || { echo "FATAL: manifest missing"; exit 1; }
