@@ -54,8 +54,23 @@ def slice_dialog_wav(wav_path: str, start: float, end: float,
     is a pure-python wrapper around libsndfile and is stable across hosts.
     """
     import soundfile as sf
-    # soundfile.read returns (samples, channels) at native sr
-    wav, sr = sf.read(wav_path, dtype="float32", always_2d=True)
+    # soundfile.read returns (samples, channels) at native sr.
+    # If libsndfile can't open the file (corrupt, NFS stale handle, permissions),
+    # we log it once and return a silent tensor so training can continue.
+    # The bad file will be reported at the end of the run.
+    try:
+        wav, sr = sf.read(wav_path, dtype="float32", always_2d=True)
+    except Exception as e:
+        # Log to a global set so we can report all bad files at end of training
+        if not hasattr(slice_dialog_wav, "_bad_files"):
+            slice_dialog_wav._bad_files = set()
+        if wav_path not in slice_dialog_wav._bad_files:
+            slice_dialog_wav._bad_files.add(wav_path)
+            print(f"[slice_dialog_wav] WARN: cannot read {wav_path}: "
+                  f"{type(e).__name__}: {e}. Using silent tensor instead.",
+                  flush=True)
+        # Return 6 seconds of silence at target_sr as a fallback
+        return torch.zeros(target_sr * 6, dtype=torch.float32)
     wav = torch.from_numpy(wav)  # (T, C)
     if sr != target_sr:
         # Linear resample via torch (no torchaudio dependency).
