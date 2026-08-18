@@ -54,14 +54,28 @@ def slice_dialog_wav(wav_path: str, start: float, end: float,
     is a pure-python wrapper around libsndfile and is stable across hosts.
     """
     import soundfile as sf
-    # soundfile.read returns (samples, channels) at native sr.
-    # If libsndfile can't open the file (corrupt, NFS stale handle, permissions),
-    # we log it once and return a silent tensor so training can continue.
-    # The bad file will be reported at the end of the run.
+    import shutil
+    import tempfile
+    # HPC compute nodes raise "System error" on libsndfile reads even though
+    # the same files are readable on the login node. The cause is NFS file-handle
+    # staleness on the compute node mount. Workaround: copy the wav to /tmp first
+    # (forces a fresh NFS read), then read from /tmp.
+    #
+    # Falls back to silent tensor on any failure so a single bad file doesn't
+    # kill the training run.
     try:
-        wav, sr = sf.read(wav_path, dtype="float32", always_2d=True)
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            shutil.copy(wav_path, tmp.name)
+            tmp_path = tmp.name
+        try:
+            wav, sr = sf.read(tmp_path, dtype="float32", always_2d=True)
+        finally:
+            import os
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
     except Exception as e:
-        # Log to a global set so we can report all bad files at end of training
         if not hasattr(slice_dialog_wav, "_bad_files"):
             slice_dialog_wav._bad_files = set()
         if wav_path not in slice_dialog_wav._bad_files:
@@ -69,7 +83,6 @@ def slice_dialog_wav(wav_path: str, start: float, end: float,
             print(f"[slice_dialog_wav] WARN: cannot read {wav_path}: "
                   f"{type(e).__name__}: {e}. Using silent tensor instead.",
                   flush=True)
-        # Return 6 seconds of silence at target_sr as a fallback
         return torch.zeros(target_sr * 6, dtype=torch.float32)
     wav = torch.from_numpy(wav)  # (T, C)
     if sr != target_sr:
