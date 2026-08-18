@@ -28,7 +28,6 @@ from typing import Optional
 
 import numpy as np
 import torch
-import torchaudio
 from torch.utils.data import Dataset
 from transformers import AutoTokenizer
 
@@ -49,15 +48,33 @@ def slice_dialog_wav(wav_path: str, start: float, end: float,
     Read a dialog-level wav and slice out the per-utterance audio
     between start and end (seconds). Pad to 6 seconds if shorter.
     Returns (T,) float32 tensor at 16 kHz.
+
+    Uses soundfile (libsndfile) instead of torchaudio because the HPC
+    compute node's torchaudio C library segfaults on some wavs. soundfile
+    is a pure-python wrapper around libsndfile and is stable across hosts.
     """
-    wav, sr = torchaudio.load(wav_path)
+    import soundfile as sf
+    # soundfile.read returns (samples, channels) at native sr
+    wav, sr = sf.read(wav_path, dtype="float32", always_2d=True)
+    wav = torch.from_numpy(wav)  # (T, C)
     if sr != target_sr:
-        wav = torchaudio.functional.resample(wav, sr, target_sr)
-    if wav.shape[0] > 1:
-        wav = wav.mean(dim=0, keepdim=True)
-    wav = wav.squeeze(0)
-    s = int(start * target_sr)
-    e = int(end * target_sr)
+        # Linear resample via torch (no torchaudio dependency).
+        # For the small fraction of files not at 16 kHz (rare in IEMOCAP).
+        ratio = target_sr / sr
+        new_len = int(wav.shape[0] * ratio)
+        wav = torch.nn.functional.interpolate(
+            wav.transpose(0, 1).unsqueeze(0),  # (1, C, T)
+            size=new_len,
+            mode="linear",
+            align_corners=False,
+        ).squeeze(0).transpose(0, 1)  # back to (T, C)
+        sr = target_sr
+    # Mono
+    if wav.shape[1] > 1:
+        wav = wav.mean(dim=1, keepdim=True)
+    wav = wav.squeeze(1)  # (T,)
+    s = int(start * sr)
+    e = int(end * sr)
     s = max(0, min(s, len(wav)))
     e = max(s, min(e, len(wav)))
     seg = wav[s:e]
