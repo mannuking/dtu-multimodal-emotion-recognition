@@ -193,9 +193,9 @@ def main():
     parser.add_argument("--fold", type=int, required=True)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--epochs", type=int, default=30)
-    parser.add_argument("--lr-head", type=float, default=1e-3)
-    parser.add_argument("--batch-size", type=int, default=8)  # was 32, lowered for memory + num_workers=0
-    parser.add_argument("--patience", type=int, default=8)
+    parser.add_argument("--lr-head", type=float, default=5e-4)  # was 1e-3, lower for stability
+    parser.add_argument("--batch-size", type=int, default=16)  # was 8, /tmp workaround + soundfile lets us go bigger
+    parser.add_argument("--patience", type=int, default=10)  # was 8, more room for cross-attention to find good min
     parser.add_argument("--class-weighted", type=str, default="false",
                         choices=["true", "false"])
     # ckpt dirs default to repo-root CHECKPOINT_DIR (already resolved above)
@@ -222,11 +222,11 @@ def main():
     train_loader = DataLoader(
         IEMOCAPDataset(train_manifest, tokenizer,
                        target_sr=TARGET_SR, max_text_len=MAX_TEXT_LEN),
-        batch_size=args.batch_size, shuffle=True, num_workers=0, pin_memory=False)
+        batch_size=args.batch_size, shuffle=True, num_workers=2, pin_memory=True)
     val_loader = DataLoader(
         IEMOCAPDataset(val_manifest, tokenizer,
                        target_sr=TARGET_SR, max_text_len=MAX_TEXT_LEN),
-        batch_size=args.batch_size, shuffle=False, num_workers=0, pin_memory=False)
+        batch_size=args.batch_size, shuffle=False, num_workers=2, pin_memory=True)
 
     # Load frozen v9b encoders (one ckpt per fold/seed)
     text_ckpt = (Path(args.ckpt_text_dir)
