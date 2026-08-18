@@ -59,7 +59,9 @@ def slice_dialog_wav(wav_path: str, start: float, end: float,
     and copies to /tmp first to dodge NFS file-handle staleness.
     """
     from pathlib import Path as _P
-    repo_root = _P(__file__).parent.parent.parent
+    # iemocap_dataset.py lives at repo root, so parent.parent is the repo root.
+    # (NOT parent.parent.parent — that would go up one too many levels.)
+    repo_root = _P(__file__).parent.parent
     if not _P(wav_path).is_absolute():
         wav_path = str(repo_root / wav_path)
     import soundfile as sf
