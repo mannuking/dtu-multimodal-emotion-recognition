@@ -1,0 +1,31 @@
+v10 fusion session 2026-08-18 — paused on HPC segfault
+
+DONE:
+- v9b audio grand 0.7274 (15/15 ckpts) — committed
+- v9b text grand 0.6973 (15/15 ckpts) — committed
+- v10-B cross-attention fusion code (14.45M trainable params) — committed
+- iemocap_dataset.py switched to soundfile (libsndfile) — committed
+- 9 fixes for HPC integration — all in git history
+
+BLOCKED:
+- v10 ckpts segfault inside _torchaudio.so or _soundfile.so on scn25-family nodes
+- Login-node smoke test PASSES — code path is correct
+- Issue is HPC infrastructure (broken compute nodes, NFS mount, or shared library)
+
+NEXT STEPS (tomorrow with fresh HPC):
+1. Open HPC ops ticket: "Python segfault inside audio decoder on scn25-* compute nodes, login works, same venv"
+2. Try interactive repro: srun --pty bash on a non-sc25 node
+3. OR: get fresh compute nodes, re-submit, should land first try
+4. Once ckpts land: sbatch scripts/eval_v10_table1.sbatch
+5. Print Table 1: cd scripts/iemocap && uv run python build_table1_v10.py
+
+GIT COMMITS (in order, all on main):
+486b355 - Initial v10-B fusion code
+2cc36b1 - --array=0-29 fix
+1e2eb53 - sys.path to repo root
+69fb205 - --manifest to repo root
+d2996d0 - CHECKPOINT_DIR + ckpt paths to repo root
+deda8ea - Strip deberta./wavlm. prefix on load
+8b6ac62 - Drop head.* keys
+08126fa - num_workers=0 + batch=8
+973ce79 - soundfile fallback
