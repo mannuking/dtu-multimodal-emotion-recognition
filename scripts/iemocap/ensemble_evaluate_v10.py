@@ -80,7 +80,11 @@ def eval_one_fold_seed(fold: int, seed: int, device: str, tokenizer, manifest,
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--manifest", default="data/iemocap/manifest.csv")
+    # Same repo-root resolution as train_ser_v10_fusion.py (cwd-relative paths
+    # break because sbatch does `cd scripts/iemocap` first).
+    REPO_ROOT = Path(__file__).parent.parent.parent
+    default_manifest = str(REPO_ROOT / "data" / "iemocap" / "manifest.csv")
+    parser.add_argument("--manifest", default=default_manifest)
     parser.add_argument("--out", default="reports/v10_table1_results.json")
     args = parser.parse_args()
 

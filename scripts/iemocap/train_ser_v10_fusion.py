@@ -168,7 +168,13 @@ class CMFusionHead(nn.Module):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--manifest", default="data/iemocap/manifest.csv")
+    # Resolve manifest path relative to the working tree root (where this repo
+    # lives), NOT relative to cwd — sbatch does `cd scripts/iemocap` before
+    # invoking Python, so a bare "data/iemocap/manifest.csv" would resolve to
+    # the wrong place. Path(__file__).parent.parent.parent = repo root.
+    REPO_ROOT = Path(__file__).parent.parent.parent
+    default_manifest = str(REPO_ROOT / "data" / "iemocap" / "manifest.csv")
+    parser.add_argument("--manifest", default=default_manifest)
     parser.add_argument("--fold", type=int, required=True)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--epochs", type=int, default=30)
