@@ -52,9 +52,11 @@ def eval_one_fold_seed(fold: int, seed: int, device: str, tokenizer, manifest,
         IEMOCAPDataset(val_manifest, tokenizer,
                        target_sr=TARGET_SR, max_text_len=MAX_TEXT_LEN),
         batch_size=32, shuffle=False, num_workers=2, pin_memory=True)
-    text_ckpt = Path("model_checkpoints") / f"v9b_text_fold{fold}_seed{seed}.pt"
-    audio_ckpt = Path("model_checkpoints") / f"v9b_audio_fold{fold}_seed{seed}.pt"
-    fusion_ckpt = (Path("model_checkpoints")
+    # Resolve ckpt paths from repo root, not cwd (sbatch does `cd scripts/iemocap`)
+    CKPT_ROOT = Path(__file__).parent.parent.parent / "model_checkpoints"
+    text_ckpt = CKPT_ROOT / f"v9b_text_fold{fold}_seed{seed}.pt"
+    audio_ckpt = CKPT_ROOT / f"v9b_audio_fold{fold}_seed{seed}.pt"
+    fusion_ckpt = (CKPT_ROOT
                    / f"v10_fusion_{weight_tag}_fold{fold}_seed{seed}.pt")
     text_enc = FrozenEncoder(text_ckpt, kind="text").to(device)
     audio_enc = FrozenEncoder(audio_ckpt, kind="audio").to(device)
@@ -123,7 +125,8 @@ def main():
         }
 
     # Append v9b legs (reuse from existing reports if available)
-    v9b_path = Path("reports/v9b_table1_results.json")
+    # Resolve v9b JSON from repo root (sbatch cwd != repo root)
+    v9b_path = Path(__file__).parent.parent.parent / "reports" / "v9b_table1_results.json"
     if v9b_path.exists():
         with open(v9b_path) as f:
             out["v9b"] = json.load(f)

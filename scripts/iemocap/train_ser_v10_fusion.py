@@ -47,7 +47,11 @@ from iemocap_dataset import (
 
 warnings.filterwarnings("ignore")
 
-CHECKPOINT_DIR = Path("model_checkpoints")
+# Resolve checkpoint dir to repo root, not cwd - same reason as --manifest.
+# sbatch does `cd scripts/iemocap`, so bare "model_checkpoints/" would
+# resolve to scripts/iemocap/model_checkpoints/ which doesn't exist.
+# The real ckpts live at the repo root: ~/Research/.../model_checkpoints/
+CHECKPOINT_DIR = Path(__file__).parent.parent.parent / "model_checkpoints"
 WAVLM_NAME = "microsoft/wavlm-base-plus"
 DEBERTA_NAME = "microsoft/deberta-v3-base"
 TARGET_SR = 16000
@@ -183,8 +187,9 @@ def main():
     parser.add_argument("--patience", type=int, default=8)
     parser.add_argument("--class-weighted", type=str, default="false",
                         choices=["true", "false"])
-    parser.add_argument("--ckpt-text-dir", default="model_checkpoints")
-    parser.add_argument("--ckpt-audio-dir", default="model_checkpoints")
+    # ckpt dirs default to repo-root CHECKPOINT_DIR (already resolved above)
+    parser.add_argument("--ckpt-text-dir", default=str(CHECKPOINT_DIR))
+    parser.add_argument("--ckpt-audio-dir", default=str(CHECKPOINT_DIR))
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
