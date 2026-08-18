@@ -25,7 +25,7 @@ from torch.utils.data import DataLoader
 from transformers import AutoModel, AutoTokenizer
 from sklearn.metrics import accuracy_score, f1_score
 
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from iemocap_dataset import (
     IEMOCAPDataset, load_manifest, make_random_kfold_splits, IDX_TO_EMOTION,
 )

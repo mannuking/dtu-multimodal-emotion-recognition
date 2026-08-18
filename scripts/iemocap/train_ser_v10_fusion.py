@@ -37,7 +37,9 @@ from transformers import AutoModel, AutoTokenizer
 from sklearn.metrics import accuracy_score, f1_score, classification_report
 
 import sys
-sys.path.insert(0, str(Path(__file__).parent))
+# Add working tree root to sys.path so `iemocap_dataset` resolves
+# (the module lives at repo root, this script lives at scripts/iemocap/).
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from iemocap_dataset import (
     IEMOCAPDataset, load_manifest, make_random_kfold_splits,
     IDX_TO_EMOTION,
