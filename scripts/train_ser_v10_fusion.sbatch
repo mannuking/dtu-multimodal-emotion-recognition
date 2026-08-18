@@ -7,6 +7,7 @@
 #SBATCH --output=ser_v10_fusion.%A_%a.out
 #SBATCH --error=ser_v10_fusion.%A_%a.err
 #SBATCH --account=dtuarp-acc
+#SBATCH --array=0-29
 # Array layout: 30 jobs = 15 (fold,seed) x 2 (class_weighted false/true).
 # task_id % 15 = fold*3 + (seed-42), task_id // 15 = 0 (unif) or 1 (cw).
 set -e
