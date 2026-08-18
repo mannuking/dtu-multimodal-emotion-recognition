@@ -49,10 +49,19 @@ def slice_dialog_wav(wav_path: str, start: float, end: float,
     between start and end (seconds). Pad to 6 seconds if shorter.
     Returns (T,) float32 tensor at 16 kHz.
 
-    Uses soundfile (libsndfile) instead of torchaudio because the HPC
-    compute node's torchaudio C library segfaults on some wavs. soundfile
-    is a pure-python wrapper around libsndfile and is stable across hosts.
+    The manifest stores wav paths relative to the repo root
+    (e.g. "data/iemocap/Session1/dialog/wav/Ses01F_impro01.wav"). When
+    sbatch does "cd scripts/iemocap" before running Python, that relative
+    path would resolve to scripts/iemocap/data/iemocap/... which does
+    not exist. Convert to absolute at this entry point using the repo
+    root (where this iemocap_dataset.py file lives, parent.parent.parent).
+    Also uses soundfile (libsndfile) instead of torchaudio for HPC compat,
+    and copies to /tmp first to dodge NFS file-handle staleness.
     """
+    from pathlib import Path as _P
+    repo_root = _P(__file__).parent.parent.parent
+    if not _P(wav_path).is_absolute():
+        wav_path = str(repo_root / wav_path)
     import soundfile as sf
     import shutil
     import tempfile
