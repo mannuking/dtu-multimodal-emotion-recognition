@@ -61,7 +61,10 @@ def slice_dialog_wav(wav_path: str, start: float, end: float,
     from pathlib import Path as _P
     # iemocap_dataset.py lives at repo root, so parent.parent is the repo root.
     # (NOT parent.parent.parent — that would go up one too many levels.)
-    repo_root = _P(__file__).parent.parent
+    # iemocap_dataset.py is AT the repo root, so __file__.parent IS the repo root.
+    # (NOT parent.parent.parent — would go to /Research/. NOT parent.parent —
+    # also too high. The file itself sits at the repo root.)
+    repo_root = _P(__file__).parent
     if not _P(wav_path).is_absolute():
         wav_path = str(repo_root / wav_path)
     import soundfile as sf
