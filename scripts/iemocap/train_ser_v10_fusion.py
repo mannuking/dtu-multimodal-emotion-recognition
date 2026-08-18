@@ -72,7 +72,11 @@ class FrozenEncoder(nn.Module):
         else:
             self.model = AutoModel.from_pretrained(DEBERTA_NAME)
         state = torch.load(ckpt_path, map_location="cpu", weights_only=False)
-        self.model.load_state_dict(state["model"])
+        # Strip the encoder prefix that v9b wraps save with: model.deberta.*
+        # needs to become just * when loading into the bare DebertaV2Model.
+        prefix = "deberta." if kind == "text" else "wavlm."
+        state_dict = {k.removeprefix(prefix): v for k, v in state["model"].items()}
+        self.model.load_state_dict(state_dict)
         for p in self.model.parameters():
             p.requires_grad = False
         self.model.eval()
