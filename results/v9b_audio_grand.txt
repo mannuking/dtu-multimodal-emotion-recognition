@@ -1,0 +1,6 @@
+v9b_audio_grand: 0.7274
+n_ckpts: 15
+vs_v9a: +0.0618
+vs_MemoCMT_audio: +0.0618
+date: 2026-08-17
+note: WavLM-base+ + last-2 unfreeze, IEMOCAP-4 random 5-fold

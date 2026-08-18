@@ -1,0 +1,9 @@
+v9b_text_grand: 0.6973
+n_ckpts: 15
+min: 0.6709 (fold4_seed44)
+max: 0.7251 (fold1_seed42)
+per_fold: [0.6914, 0.7077, 0.7022, 0.6998, 0.6860]
+vs_v9a: +0.1002
+vs_MemoCMT_text: -0.0137
+date: 2026-08-17
+note: DeBERTa-v3-base + last-2 unfreeze + sentencepiece warmup, IEMOCAP-4 random 5-fold
