@@ -217,7 +217,7 @@ def train_fer_model(model, name, train_gen, val_gen, class_weights, strategy):
         EarlyStopping(monitor='val_accuracy', patience=8, restore_best_weights=True, verbose=1)
     ]
 
-    model.fit(
+    hist = model.fit(
         train_gen,
         steps_per_epoch=train_gen.samples // train_gen.batch_size,
         validation_data=val_gen,
@@ -227,6 +227,21 @@ def train_fer_model(model, name, train_gen, val_gen, class_weights, strategy):
         class_weight=class_weights,
         verbose=1
     )
+
+    # Write the training history next to the weights. Without this, the
+    # only {name}_history.json on disk is the one left by the Oct-2025
+    # run, and a verifier reading it would report THAT run's numbers
+    # against THIS run's freshly trained checkpoint.
+    try:
+        import json
+        hpath = os.path.join(CHECKPOINT_DIR, f"{name}_history.json")
+        os.makedirs(CHECKPOINT_DIR, exist_ok=True)
+        with open(hpath, "w") as fh:
+            json.dump({"history": {k: [float(x) for x in v]
+                                   for k, v in hist.history.items()}}, fh, indent=2)
+        print(f"  ✅ wrote {hpath}")
+    except Exception as e:
+        print(f"  ⚠️ could not write the history file: {e}")
 
     print(f"✅ {name} training complete!")
 

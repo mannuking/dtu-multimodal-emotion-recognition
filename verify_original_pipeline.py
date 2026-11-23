@@ -156,8 +156,8 @@ def main():
     # A checkpoint file that exists but is tiny is a truncated save.
     print("\n  [files]")
     for name in ("ser_best.keras", "meta_hybrid_best.keras",
-                 "vgg16_orig_best.keras", "vgg16_bal_best.keras",
-                 "resnet50_orig_best.keras", "resnet50_bal_best.keras",
+                 "vgg16_orig_best.weights.h5", "vgg16_bal_best.weights.h5",
+                 "resnet50_orig_best.weights.h5", "resnet50_bal_best.weights.h5",
                  "ter_pytorch_best.pt"):
         p = CKPT / name
         if p.exists():
@@ -175,10 +175,16 @@ def main():
                      hist_acc(ser_res, "accuracy"),
                      ser_res.get("test_accuracy")))
 
+    # FER history files are written by train_fer_tensorflow.py from the live
+    # run. A missing one means that leg did not train in this run, so it is
+    # reported as absent rather than silently carrying the Oct-2025 number.
     for name in ("vgg16_orig", "vgg16_bal", "resnet50_orig", "resnet50_bal"):
+        wpath = CKPT / f"{name}_best.weights.h5"
         h = read_json(CKPT / f"{name}_history.json")
-        if h:
+        if h and wpath.exists():
             rows.append((f"FER ({name})", hist_acc(h, "accuracy"), None))
+        elif h:
+            rows.append((f"FER ({name}) [STALE history]", hist_acc(h, "accuracy"), None))
 
     # ---------- master status ----------
     status = read_json(CKPT / "master_training_status.json")
