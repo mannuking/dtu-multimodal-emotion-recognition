@@ -394,6 +394,8 @@ def train_meta_classifier():
     print("\n3️⃣ FER Predictions (TensorFlow)...")
     fer_models = load_fer_tensorflow()
     p_face = []
+    n_real_faces = 0
+    n_missing_faces = 0
     batch_size = 8
     for i in range(0, len(imgs), batch_size):
         if i % 100 == 0:
@@ -403,13 +405,16 @@ def train_meta_classifier():
         batch = []
         for img_path in batch_imgs:
             try:
-                if os.path.exists(img_path):
+                if img_path and os.path.exists(img_path):
                     im = Image.open(img_path).convert("RGB").resize(IMG_SIZE)
                     arr = np.asarray(im).astype(np.float32)/255.0
+                    n_real_faces += 1
                 else:
                     arr = np.zeros((224,224,3), dtype=np.float32)
-            except:
+                    n_missing_faces += 1
+            except Exception:
                 arr = np.zeros((224,224,3), dtype=np.float32)
+                n_missing_faces += 1
             batch.append(arr)
         
         batch = np.stack(batch, 0)
@@ -421,7 +426,19 @@ def train_meta_classifier():
             gc.collect()
 
     p_face = np.array(p_face)
-    
+
+    # Report the visual-channel coverage. If most rows are zeros the
+    # "multimodal" fusion is really audio+text, and that has to be stated
+    # rather than hidden behind a zero vector.
+    total_faces = n_real_faces + n_missing_faces
+    cov = (n_real_faces / total_faces * 100) if total_faces else 0.0
+    print(f"\n   visual channel: {n_real_faces}/{total_faces} rows have a real "
+          f"face ({cov:.1f}% coverage)")
+    if cov < 50:
+        print("   ⚠️  under 50% coverage — the fusion is mostly audio+text.")
+        print("      Either run extract_fer_frames.py to fill the visual")
+        print("      channel, or state the limitation explicitly in the paper.")
+
     # Clear FER models
     del fer_models
     tf.keras.backend.clear_session()
