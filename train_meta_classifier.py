@@ -252,15 +252,46 @@ def load_ser_tensorflow():
     print("✅ TensorFlow SER model loaded")
     return model
 
+def resolve_speech_wav(p):
+    """
+    The triplet manifest stores speech_wav relative to the dataset root
+    (e.g. 'angry/1022_ITS_ANG_XX.wav'), NOT relative to the repo root.
+    Passing that straight to preprocess_audio() silently loads nothing and
+    yields a zero vector for every row — the meta-classifier would then be
+    trained on a constant feature and the fusion result would be garbage
+    with no error anywhere.
+
+    Try the path as given, then relative to combined_ser_dataset/, then
+    relative to the repo root.
+    """
+    cands = [p,
+             os.path.join(SER_COMBINED_DIR, p),
+             os.path.join(SER_COMBINED_DIR, "combined_ser_dataset", p)]
+    for c in cands:
+        if c and os.path.exists(c):
+            return c
+    return None
+
+
 def ser_predict_proba(model, wav_paths):
     """SER prediction"""
     arr = []
+    missing = 0
     for p in wav_paths:
-        y = preprocess_audio(p)
+        real = resolve_speech_wav(p)
+        if real is None:
+            missing += 1
+            arr.append(np.zeros(NUM_CLASSES))
+            continue
+        y = preprocess_audio(real)
         if y is None:
+            missing += 1
             arr.append(np.zeros(NUM_CLASSES))
             continue
         arr.append(extract_features(y))
+    if missing:
+        print(f"  ⚠️  {missing}/{len(wav_paths)} audio files could not be resolved "
+              f"— those rows get a zero vector")
     
     X = np.array(arr).reshape(len(arr), -1, 1)
     return model.predict(X, verbose=0)
@@ -328,9 +359,17 @@ def train_meta_classifier():
     print("\n2️⃣ SER Predictions (TensorFlow)...")
     ser_model = load_ser_tensorflow()
     p_speech = []
+    unresolvable = 0
     for wav_path in waves:
+        if resolve_speech_wav(wav_path) is None:
+            unresolvable += 1
         p_speech.append(ser_predict_proba(ser_model, [wav_path])[0])
     p_speech = np.array(p_speech)
+    if unresolvable:
+        print(f"  ❌ {unresolvable}/{len(waves)} triplet audio paths could not be "
+              f"resolved against {SER_COMBINED_DIR}/")
+        print("     Refusing to train the meta-classifier on zero vectors.")
+        raise SystemExit(1)
     
     # Clear SER model
     del ser_model

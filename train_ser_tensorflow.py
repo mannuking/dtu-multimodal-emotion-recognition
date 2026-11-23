@@ -38,9 +38,20 @@ def load_ser_embeddings():
         labels_path=os.path.join(SER_FEATURES_DIR, "labels.npy"),
         manifest_csv="combined_ser_dataset/metadata.csv",
     )
-    # labels is int array — convert back to string for the rest of the pipeline
+    # The cache may hold int labels (regenerated) or legacy string labels
+    # (the Oct-2025 Drive snapshot). Normalise both to a string label array.
     label_map = {e: i for i, e in enumerate(EMOTION_ORDER_LOWER)}
-    l_str = np.array([EMOTION_ORDER_LOWER[int(lbl)] if int(lbl) in range(len(EMOTION_ORDER_LOWER)) else "neutral" for lbl in labels])
+
+    def _to_emo_name(lbl):
+        if isinstance(lbl, (str, np.str_)):
+            return str(lbl).strip().lower()
+        try:
+            i = int(lbl)
+        except (TypeError, ValueError):
+            return "neutral"
+        return EMOTION_ORDER_LOWER[i] if 0 <= i < len(EMOTION_ORDER_LOWER) else "neutral"
+
+    l_str = np.array([_to_emo_name(lbl) for lbl in labels])
     mask = np.array([lbl in label_map for lbl in l_str])
     f, l = feats[mask], l_str[mask]
     y = np.array([label_map[lbl] for lbl in l])

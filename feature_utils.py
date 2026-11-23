@@ -135,6 +135,75 @@ def extract_features_batch(wav_paths, manifest_df=None, n_mfcc=N_MFCC, verbose=T
     return feats, labels
 
 
+def _resolve_wav_paths(df):
+    """
+    Resolve the audio path for every manifest row.
+
+    The manifest schema has changed over time: older manifests used a
+    'filepath' column, the current one uses 'wav_path'. The values differ
+    too — current 'wav_path' is ALREADY relative to the repo root
+    ('combined_ser_dataset/<emotion>/<file>.wav'), so blindly joining
+    'combined_ser_dataset' onto it would produce a doubled prefix and
+    every file would fail to load.
+
+    Returns (paths, ok) where ok is False when no usable column exists.
+    """
+    col = None
+    for cand in ("wav_path", "filepath", "audio_path"):
+        if cand in df.columns:
+            col = cand
+            break
+    if col is None:
+        raise KeyError(
+            f"No audio path column in the manifest. Expected one of "
+            f"'wav_path' / 'filepath' / 'audio_path'; found {list(df.columns)}"
+        )
+
+    paths = []
+    for raw in df[col].astype(str):
+        p = raw.strip()
+        if os.path.isabs(p):
+            paths.append(p)
+            continue
+        # Normalise: strip any leading './'
+        p = p[2:] if p.startswith("./") else p
+        if p.startswith("combined_ser_dataset/"):
+            paths.append(p)                      # already repo-root relative
+        else:
+            paths.append(os.path.join("combined_ser_dataset", p))
+    return paths, col
+
+
+def features_root_hint():
+    """Repo root — the parent of the directory holding feature_utils.py."""
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "ser_feature_output", "features.npy")
+
+
+def _cache_is_usable(features_path, labels_path, expected_rows):
+    """
+    The Oct-2025 Drive snapshot shipped features.npy/labels.npy for a
+    DIFFERENT, larger manifest (66090 samples, string labels). Loading that
+    cache today crashes the trainer (int('sad')) or silently trains on the
+    wrong row count. Validate before trusting it.
+    """
+    try:
+        f = np.load(features_path, mmap_mode='r')
+        l = np.load(labels_path, allow_pickle=True)
+    except Exception as e:
+        print(f"  [features] cache unreadable ({e}); regenerating")
+        return False
+    if l.dtype.kind in ("U", "S", "O"):
+        print(f"  [features] cache has {l.dtype} labels (legacy string format) "
+              f"— regenerating from the manifest")
+        return False
+    if expected_rows and len(l) != expected_rows:
+        print(f"  [features] cache has {len(l)} rows but the manifest has "
+              f"{expected_rows} — stale cache, regenerating")
+        return False
+    print(f"  [features] cached: {f.shape} features, {len(l)} labels at {features_path}")
+    return True
+
+
 def ensure_features_exist(features_path="ser_feature_output/features.npy",
                           labels_path="ser_feature_output/labels.npy",
                           manifest_csv="combined_ser_dataset/metadata.csv",
@@ -143,16 +212,19 @@ def ensure_features_exist(features_path="ser_feature_output/features.npy",
     If features.npy is missing on disk, compute it from the audio manifest.
     Caches result so re-runs are instant.
     """
-    if os.path.exists(features_path) and os.path.exists(labels_path) and not overwrite:
+    os.makedirs(os.path.dirname(features_path) or ".", exist_ok=True)
+    df = pd.read_csv(manifest_csv)
+    expected_rows = len(df)
+
+    if (os.path.exists(features_path) and os.path.exists(labels_path)
+            and not overwrite and _cache_is_usable(features_path, labels_path, expected_rows)):
         f = np.load(features_path, mmap_mode='r')
-        l = np.load(labels_path)
-        print(f"  [features] cached: {f.shape} features, {len(l)} labels at {features_path}")
+        l = np.load(labels_path, allow_pickle=True)
         return f, l
 
-    os.makedirs(os.path.dirname(features_path), exist_ok=True)
     print(f"  [features] cache miss — extracting from {manifest_csv}")
-    df = pd.read_csv(manifest_csv)
-    wav_paths = [os.path.join("combined_ser_dataset", row['filepath']) for _, row in df.iterrows()]
+    wav_paths, col = _resolve_wav_paths(df)
+    print(f"  [features] manifest column '{col}', {len(wav_paths)} rows")
     feats, labels = extract_features_batch(wav_paths, manifest_df=df, verbose=True)
     print(f"  [features] saving {feats.shape} → {features_path}")
     # Save as float16 to halve disk space (5.4 GB → 2.7 GB)
