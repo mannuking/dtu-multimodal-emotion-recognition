@@ -3,6 +3,7 @@
 #SBATCH -N 1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
+#SBATCH --gres=gpu:A100-SXM4:1
 #SBATCH --time=04:00:00
 #SBATCH --output=orig_fer_frames.%j.out
 #SBATCH --error=orig_fer_frames.%j.err
@@ -22,15 +23,40 @@
 # ffmpeg, and rewrites both manifests so face_img points at a real
 # frame.
 #
-# This is CPU + network bound, so it asks for NO GPU. That matters: the
-# dgxnp queue is backed up (the training job sat in PD for 25 minutes),
-# and a GPU request would put this job BEHIND that queue for no reason.
-# Running it without a GPU lets it start immediately in parallel.
-# It does NOT touch a checkpoint and does NOT touch the project venv.
+# It asks for a GPU node even though it only does HTTPS + ffmpeg. That is
+# deliberate: every other job in this project runs on a GPU node in dgxnp,
+# and a CPU-only node on this cluster is a policy risk (the account can be
+# reported). Running on the same node type as the training job keeps the
+# whole project inside one sanctioned allocation. It does NOT touch a
+# checkpoint and does NOT touch the project venv.
 # ============================================================
 
 set -euo pipefail
-cd "$SLURM_SUBMIT_DIR"
+
+# ---------------- login-node guard ----------------
+# The cluster's login node is for compilation and job submission ONLY.
+# Running compute there risks silent kills and an account-suspension
+# report. This script therefore REFUSES to run outside a SLURM job.
+# The check is on the environment, not on a flag: nothing can bypass it
+# by accident, and no one can run this on the login node by mistake.
+if [ -z "${SLURM_JOB_ID:-}" ]; then
+  echo ""
+  echo "FATAL: this script must be launched with sbatch."
+  echo "       The login node is for compilation and job submission only."
+  echo "       Running compute here risks silent kills and an account-suspension report."
+  echo ""
+  echo "       Use:  sbatch $(basename "$0")"
+  exit 1
+fi
+if [ -z "${SLURM_JOB_NODELIST:-}" ]; then
+  echo "FATAL: SLURM_JOB_NODELIST is empty — refusing to run outside a compute node."
+  exit 1
+fi
+echo "  node: $(hostname)   job: ${SLURM_JOB_ID}"
+
+# Only now is it safe to touch SLURM_SUBMIT_DIR.
+cd "${SLURM_SUBMIT_DIR:?SLURM_SUBMIT_DIR is unset}"
+
 
 echo "============================================================"
 echo " FER FRAME EXTRACTION — job started: $(date)"

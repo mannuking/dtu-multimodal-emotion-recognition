@@ -30,7 +30,31 @@
 # ============================================================
 
 set -euo pipefail
-cd "$SLURM_SUBMIT_DIR"
+
+# ---------------- login-node guard ----------------
+# The cluster's login node is for compilation and job submission ONLY.
+# Running compute there risks silent kills and an account-suspension
+# report. This script therefore REFUSES to run outside a SLURM job.
+# The check is on the environment, not on a flag: nothing can bypass it
+# by accident, and no one can run this on the login node by mistake.
+if [ -z "${SLURM_JOB_ID:-}" ]; then
+  echo ""
+  echo "FATAL: this script must be launched with sbatch."
+  echo "       The login node is for compilation and job submission only."
+  echo "       Running compute here risks silent kills and an account-suspension report."
+  echo ""
+  echo "       Use:  sbatch $(basename "$0")"
+  exit 1
+fi
+if [ -z "${SLURM_JOB_NODELIST:-}" ]; then
+  echo "FATAL: SLURM_JOB_NODELIST is empty — refusing to run outside a compute node."
+  exit 1
+fi
+echo "  node: $(hostname)   job: ${SLURM_JOB_ID}"
+
+# Only now is it safe to touch SLURM_SUBMIT_DIR.
+cd "${SLURM_SUBMIT_DIR:?SLURM_SUBMIT_DIR is unset}"
+
 
 echo "============================================================"
 echo " ORIGINAL PIPELINE — job started: $(date)"
@@ -60,7 +84,14 @@ for m in need:
 if bad:
     print(f"  MISSING: {', '.join(bad)}"); sys.exit(1)
 import tensorflow as tf
-print(f"  TF GPUs visible on this node: {len(tf.config.list_physical_devices('GPU'))}")
+ngpu = len(tf.config.list_physical_devices("GPU"))
+print(f"  TF GPUs visible on this node: {ngpu}")
+# A CPU-only run would take days and would be a policy risk on this cluster.
+# Refuse rather than silently degrade.
+if ngpu == 0:
+    print("FATAL: no GPU visible on this node.")
+    print("       This job MUST run on a GPU node. Do not run it on CPU.")
+    sys.exit(1)
 PYEOF
 
 # ---------------- preflight ----------------
@@ -271,6 +302,24 @@ echo ""
 echo "============================================================"
 echo " STAGE 4 — META late-fusion classifier"
 echo "============================================================"
+
+# The visual channel may still be empty. That is a reportable state, not
+# a reason to fail — but it MUST be reported, and the meta-classifier now
+# prints the coverage itself.
+if [ -f triplets_manifest.csv ]; then
+  # tail -n +2 drops the header row, so the counts are real data rows.
+  n_rows=$(($(tail -n +2 triplets_manifest.csv | wc -l)))
+  n_real=$(tail -n +2 triplets_manifest.csv | grep -c -v "placeholder" || true)
+  n_real=${n_real:-0}
+  echo "  triplets rows: $n_rows   with a real face_img: $n_real"
+  if [ "$n_real" -lt $((n_rows / 2)) ]; then
+    echo "  ⚠️  visual channel under 50% — the fusion is mostly audio+text."
+    echo "     Run scripts/extract_fer_frames.sbatch and re-run this stage"
+    echo "     to get a genuine three-modality fusion."
+  fi
+else
+  echo "  ⚠️  no triplets manifest — the meta stage will build it."
+fi
 uv run python -u train_meta_classifier.py 2>&1 | tee -a orig_meta.log
 
 # ---------------- verification ----------------
