@@ -76,6 +76,94 @@ echo "labels npy:  $([ -f ser_feature_output/labels.npy ] && echo present || ech
 echo "fer2013:     $([ -d fer2013/train ] && echo present || echo 'absent (will download)')"
 echo "ter csvs:    $([ -f ter_dataset/merged/text_train.csv ] && echo present || echo 'absent (will build)')"
 
+# ---------------- pre-flight: the data contract ----------------
+# Everything below checks a contract that, if violated, produces a
+# plausible-looking but meaningless number rather than an error.
+echo ""
+echo "--- PRE-FLIGHT ---"
+uv run python -u - <<'PYEOF' || { echo "FATAL: pre-flight failed — refusing to train"; exit 1; }
+import os, sys, csv, traceback
+import numpy as np
+sys.path.insert(0, os.getcwd())
+ok = True
+
+def check(label, cond, detail=""):
+    global ok
+    print(f"  {'PASS' if cond else 'FAIL'}  {label}{(' — ' + detail) if detail else ''}")
+    if not cond:
+        ok = False
+
+def section(name):
+    print(f"  [{name}]")
+
+# 1. The manifest and the audio must agree.
+mp = "combined_ser_dataset/metadata.csv"
+rows = []
+if os.path.exists(mp):
+    with open(mp, newline="") as f:
+        rows = list(csv.DictReader(f))
+    check("manifest readable", len(rows) > 0, f"{len(rows)} rows")
+    col = next((c for c in ("wav_path", "filepath", "audio_path") if rows and c in rows[0]), None)
+    check("manifest has a path column", col is not None, f"'{col}'")
+    if col:
+        try:
+            from feature_utils import _resolve_wav_paths
+            import pandas as pd
+            df = pd.read_csv(mp)
+            paths, _ = _resolve_wav_paths(df)
+            missing = sum(1 for p in paths[:400] if not os.path.exists(p))
+            check("manifest audio files resolve", missing == 0,
+                  f"{400 - missing}/400 present")
+        except Exception as e:
+            check("manifest audio files resolve", False, f"{type(e).__name__}: {e}"[:70])
+else:
+    check("manifest exists", False, mp)
+
+# 2. The SER feature cache must match the manifest, or be regenerated.
+fs = "ser_feature_output/features.npy"
+ls_ = "ser_feature_output/labels.npy"
+if os.path.exists(fs) and os.path.exists(ls_):
+    try:
+        l = np.load(ls_, allow_pickle=True)
+        n_exp = len(rows) if 'rows' in dir() else 0
+        check("SER label cache is numeric", l.dtype.kind in "iuf",
+              f"dtype={l.dtype}")
+        check("SER label cache row count matches manifest",
+              (n_exp == 0) or (len(l) == n_exp), f"{len(l)} vs {n_exp}")
+    except Exception as e:
+        check("SER label cache readable", False, f"{type(e).__name__}: {e}"[:70])
+else:
+    print("  INFO  no SER feature cache — it will be extracted from the audio")
+
+# 3. The triplet manifest's audio paths must resolve, or the meta-classifier
+#    trains on zero vectors.
+tp = "triplets_manifest.csv"
+if os.path.exists(tp):
+    with open(tp, newline="") as f:
+        trows = list(csv.DictReader(f))
+    bad = 0
+    for r in trows[:300]:
+        w = r.get("speech_wav", "")
+        cands = [w, os.path.join("combined_ser_dataset", w),
+                 os.path.join("combined_ser_dataset", "combined_ser_dataset", w)]
+        if not any(c and os.path.exists(c) for c in cands):
+            bad += 1
+    check("triplet audio paths resolve", bad == 0, f"{300 - bad}/300 present")
+else:
+    print("  INFO  no triplets manifest — it will be built")
+
+# 4. fer2013 must be the REAL dataset (28k images), not the synthetic one.
+n_imgs = sum(len(fs_) for _, _, fs_ in os.walk("fer2013/train")) if os.path.isdir("fer2013/train") else 0
+if n_imgs:
+    check("fer2013 is the real dataset", n_imgs > 20000, f"{n_imgs} images")
+else:
+    print("  INFO  fer2013 not unpacked — it will be downloaded")
+
+print()
+print("  PRE-FLIGHT:", "OK" if ok else "FAILED")
+sys.exit(0 if ok else 1)
+PYEOF
+
 # ---------------- stage 0: data preparation ----------------
 # Everything below is CPU-only and cheap; it belongs in the same job so a
 # fresh node can go from bare checkout to trained models unattended.
@@ -87,6 +175,35 @@ echo "============================================================"
 echo "[0a] Building the text corpus for TER..."
 uv run python -u prepare_ter_dataset.py || {
   echo "FATAL: TER dataset preparation failed"; exit 1; }
+
+# The corpus must be the real one. The synthetic fallback is 7 sentences
+# x 7 classes; the real corpus is >80000 utterances. A corpus smaller
+# than 20000 rows means the download failed and the builder is about to
+# be bypassed -- refuse rather than train on 7 constant sentences.
+uv run python -u -c "
+import csv, os, sys
+p = 'ter_dataset/merged/text_train.csv'
+if not os.path.exists(p):
+    print('FATAL: no TER training corpus at', p); sys.exit(1)
+with open(p, newline='') as f:
+    n = sum(1 for _ in csv.reader(f)) - 1
+print(f'  TER corpus rows: {n}')
+if n < 20000:
+    print('FATAL: TER corpus is too small — this is the synthetic fallback,')
+    print('       not real text. TER results would be meaningless.')
+    sys.exit(1)
+print('  TER corpus looks real.')
+" || { echo "FATAL: TER corpus is not the real dataset — stopping"; exit 1; }
+
+# The Oct-2025 TER checkpoint was trained on the SYNTHETIC corpus. It must
+# not survive into this run, or train_ter_pytorch.py will skip Stage 3
+# ("TER model already trained!") and the meta-classifier will fuse in a
+# model that never saw real text.
+if [ -f model_checkpoints/ter_pytorch_best.pt ]; then
+  echo "  removing the stale synthetic-corpus TER checkpoint"
+  rm -f model_checkpoints/ter_pytorch_best.pt
+  rm -rf model_checkpoints/ter_pytorch_tokenizer/
+fi
 
 echo "[0b] Building the triplets manifest for the meta-classifier..."
 uv run python -u build_triplets_leakage_free.py || {
