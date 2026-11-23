@@ -113,11 +113,25 @@ def load_fer_tensorflow():
     
     print("📥 Loading TensorFlow FER models...")
     for name in model_names:
-        checkpoint_path = os.path.join(CHECKPOINT_DIR, f"{name}_best.keras")
-        if not os.path.exists(checkpoint_path):
-            print(f"❌ {name} not found! Run train_fer_tensorflow.py first")
+        # train_fer_tensorflow.py saves WEIGHTS only ({name}_best.weights.h5) —
+        # the full .keras was never written by that trainer, so a .keras-only
+        # lookup finds nothing and the meta-classifier silently gets no FER
+        # models at all. Accept either artefact: a full .keras if present,
+        # otherwise rebuild the architecture and load the weights into it.
+        keras_path = os.path.join(CHECKPOINT_DIR, f"{name}_best.keras")
+        weights_path = os.path.join(CHECKPOINT_DIR, f"{name}_best.weights.h5")
+
+        if os.path.exists(keras_path):
+            model = tf.keras.models.load_model(keras_path)
+        elif os.path.exists(weights_path):
+            from train_fer_tensorflow import build_vgg16_model, build_resnet50_model
+            builder = build_resnet50_model if name.startswith("resnet50") else build_vgg16_model
+            model = builder()
+            model.load_weights(weights_path)
+        else:
+            print(f"❌ {name} not found (looked for {os.path.basename(keras_path)} "
+                  f"and {os.path.basename(weights_path)})! Run train_fer_tensorflow.py first")
             return None
-        model = tf.keras.models.load_model(checkpoint_path)
         fer_models.append(model)
         print(f"  ✅ Loaded {name}")
     

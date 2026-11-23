@@ -79,7 +79,16 @@ def download_and_unpack(force: bool = False) -> None:
     counts = {"train": {}, "test": {}}
     with open(csv_path, newline="") as f:
         reader = csv.DictReader(f)
+        # The canonical mirror writes the header as 'emotion, Usage, pixels'
+        # — note the space. DictReader would key it as ' Usage' and every
+        # row["Usage"] lookup would raise KeyError on all 35887 rows.
+        # Normalise the field names before reading.
+        if reader.fieldnames:
+            reader.fieldnames = [fld.strip() for fld in reader.fieldnames]
+            print(f"  CSV columns: {reader.fieldnames}")
+        n_rows = 0
         for i, row in enumerate(reader):
+            n_rows += 1
             emotion_idx = int(row["emotion"])
             usage = row["Usage"]  # "Training" or "PublicTest"/"PrivateTest"
             if usage == "Training":
@@ -97,10 +106,21 @@ def download_and_unpack(force: bool = False) -> None:
             if i and i % 5000 == 0:
                 print(f"    ...{i} rows processed")
 
-    print("  ✓ FER2013 unpacked:")
+    print(f"  ✓ FER2013 unpacked from {n_rows} CSV rows:")
     for split in ("train", "test"):
+        tot = sum(counts[split].values())
+        print(f"    {split}: {tot} images")
         for emo in EMOTIONS:
-            print(f"    {split}/{emo}: {counts[split].get(emo, 0)}")
+            print(f"      {emo:10s} {counts[split].get(emo, 0)}")
+
+    # Real FER2013 has 28709 training images. Far fewer means this was not
+    # the real dataset and every FER number derived from it is void.
+    train_total = sum(counts["train"].values())
+    if train_total < 20000:
+        raise IOError(
+            f"only {train_total} training images were unpacked — FER2013 has "
+            f"28709. This is not the real dataset; refusing to train on it."
+        )
 
 
 if __name__ == "__main__":

@@ -37,13 +37,52 @@ echo "  uv: $(uv --version)"
 
 echo ""
 echo "[3/5] Syncing the Python environment (this can take a few minutes)..."
-# --extra cuda pulls tensorflow 2.15.1 + the CUDA wheels. On the login node
+# The cuda extra pulls tensorflow 2.15.1 + the CUDA wheels. On the login node
 # this is a download + unpack only; no CUDA runtime is touched.
-uv sync --extra cuda --extra docs || {
-  echo "  (cuda extra failed — retrying with the base environment)"
-  uv sync || { echo "FATAL: uv sync failed"; exit 1; }
-}
+#
+# Do NOT add --extra docs here. The docs extra pulls weasyprint -> fonttools
+# -> brotli, and brotli's wheel frequently fails to download behind the
+# cluster's HTTP proxy ("tunnel error: unsuccessful"). A failed `uv sync`
+# with an extra UNINSTALLS the packages it would have added -- so the
+# fallback path silently removed TensorFlow, keras and tf_keras from the
+# venv, leaving an environment that cannot train anything.
+#
+# The base env has no TensorFlow at all, so a fallback to plain `uv sync`
+# is worse than failing loudly. Install the cuda extra and verify.
+if ! uv sync --extra cuda; then
+  echo ""
+  echo "FATAL: 'uv sync --extra cuda' failed."
+  echo "       Do NOT fall back to a bare 'uv sync' — that removes TensorFlow."
+  echo "       If the failure is a download error, retry; if it is a proxy"
+  echo "       error, check the cluster's egress rules for files.pythonhosted.org."
+  exit 1
+fi
 uv run python -V
+
+# Verify the packages the pipeline actually imports are present.
+echo ""
+echo "  verifying the runtime dependencies..."
+uv run python - <<'PYEOF' || { echo "FATAL: required packages missing from the venv"; exit 1; }
+import importlib, sys
+need = ["tensorflow", "keras", "torch", "transformers", "librosa", "sklearn",
+        "pandas", "numpy", "PIL", "soundfile"]
+bad = []
+for m in need:
+    try:
+        mod = importlib.import_module(m)
+        v = getattr(mod, "__version__", "?")
+        print(f"    OK  {m:14s} {v}")
+    except Exception as e:
+        bad.append(m)
+        print(f"    --  {m:14s} MISSING ({type(e).__name__})")
+if bad:
+    print(f"\n  MISSING: {', '.join(bad)}")
+    sys.exit(1)
+import tensorflow as tf
+gpus = tf.config.list_physical_devices("GPU")
+print(f"    tensorflow sees {len(gpus)} GPU(s) on the login node")
+print("    (0 on the login node is expected — GPUs appear on compute nodes)")
+PYEOF
 
 # ---- 3. dataset ----
 echo ""

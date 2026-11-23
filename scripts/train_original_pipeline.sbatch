@@ -40,6 +40,29 @@ echo "============================================================"
 
 git pull origin main || echo "  (git pull failed — continuing with local checkout)"
 
+# ---------------- environment check ----------------
+# A `uv sync` that fails can UNINSTALL the packages it would have added.
+# Never start training on an environment that cannot import TensorFlow.
+echo ""
+echo "--- ENVIRONMENT ---"
+uv run python - <<'PYEOF' || { echo "FATAL: the venv is missing required packages."; \
+  echo "       Run: uv sync --extra cuda   (do NOT fall back to a bare uv sync)"; exit 1; }
+import importlib, sys
+need = ["tensorflow", "keras", "torch", "transformers", "librosa", "sklearn",
+        "pandas", "numpy", "PIL", "soundfile", "datasets", "huggingface_hub"]
+bad = []
+for m in need:
+    try:
+        mod = importlib.import_module(m)
+        print(f"  OK  {m:16s} {getattr(mod, '__version__', '?')}")
+    except Exception:
+        bad.append(m); print(f"  --  {m:16s} MISSING")
+if bad:
+    print(f"  MISSING: {', '.join(bad)}"); sys.exit(1)
+import tensorflow as tf
+print(f"  TF GPUs visible on this node: {len(tf.config.list_physical_devices('GPU'))}")
+PYEOF
+
 # ---------------- preflight ----------------
 echo ""
 echo "--- PREFLIGHT ---"
@@ -82,11 +105,28 @@ print('SER features ready:', f.shape, 'labels:', len(l))
 " || { echo "FATAL: SER feature extraction failed"; exit 1; }
 
 echo "[0d] Downloading FER2013..."
+# fer2013_download.py skips the download if the train dir already has >= 7
+# subdirectories. A partial or synthetic directory satisfies that check, so
+# the download would be skipped and the trainer would silently train on
+# garbage. Force the download and verify the real image count afterwards.
 uv run python -u -c "
-import os
 from fer2013_download import download_and_unpack
-download_and_unpack()
-" || echo "  (FER2013 download failed — the trainer will try a synthetic fallback)"
+download_and_unpack(force=True)
+" || echo "  WARNING: FER2013 download failed — do NOT accept a synthetic fallback"
+
+# Verify FER2013 is REAL. The synthetic fallback writes 200 PNGs per class;
+# the real dataset has ~28700 train images. 1500 images == synthetic.
+uv run python -u -c "
+import os, sys
+n = sum(len(fs) for _, _, fs in os.walk('fer2013/train'))
+print(f'  FER2013 train images: {n}')
+if n < 5000:
+    print('  FATAL: fer2013/train has too few images — this is the SYNTHETIC')
+    print('         fallback, not the real dataset. FER results would be')
+    print('         meaningless. Fix the download and re-run.')
+    sys.exit(1)
+print('  FER2013 looks real.')
+" || { echo "FATAL: FER2013 is not the real dataset — stopping before training"; exit 1; }
 
 # ---------------- stage 1: FER ----------------
 echo ""
