@@ -95,3 +95,4 @@ triplets_manifest.csv
 # CREMA-D face frames extracted for the original pipeline's visual channel
 # (regenerate with: uv run python extract_fer_frames.py)
 fer_frames/
+_crema_d_lfs/
