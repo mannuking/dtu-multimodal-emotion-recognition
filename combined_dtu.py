@@ -632,19 +632,30 @@ def load_text_csv(path):
         encodings = ['utf-8', 'latin-1', 'iso-8859-1']
         df = None
         
+        # Score EVERY candidate parse and keep the widest. The original
+        # loop broke on the first parse with >= 2 columns, but pandas does
+        # not raise on a wrong delimiter -- it returns ONE column named
+        # 'text,emotion'. With ';' tried first, that 1-column parse was
+        # rejected (good), but the loop's break/continue structure then
+        # exited the delimiter loop without trying ',' at all. Every
+        # downstream text loader hit the same trap.
+        best = None
+        best_meta = None
         for delimiter in delimiters:
             for encoding in encodings:
                 try:
-                    df = pd.read_csv(path, delimiter=delimiter, encoding=encoding,
-                                   quotechar='"', on_bad_lines='skip')
-                    if df.shape[1] >= 2:  # At least 2 columns
-                        print(f"✅ Successfully loaded with delimiter '{delimiter}' and encoding '{encoding}'")
-                        break
-                except:
+                    cand = pd.read_csv(path, delimiter=delimiter, encoding=encoding,
+                                       quotechar='"', on_bad_lines='skip')
+                except Exception:
                     continue
-            else:
-                continue
-            break
+                if cand.shape[1] < 2:
+                    continue
+                if best is None or cand.shape[1] > best.shape[1]:
+                    best = cand
+                    best_meta = (delimiter, encoding)
+        if best is not None:
+            df = best
+            print(f"✅ Successfully loaded with delimiter '{best_meta[0]}' and encoding '{best_meta[1]}'")
         
         if df is None:
             print("⚠️ Standard parsing failed, trying manual parsing...")

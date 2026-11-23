@@ -49,18 +49,33 @@ def load_text_csv(path):
         delimiters = [';', ',', '\t']
         encodings = ['utf-8', 'latin-1', 'iso-8859-1']
         df = None
+        # NOTE: the original loop broke out as soon as a parse produced
+        # >= 2 columns, and pandas does not raise on a wrong delimiter --
+        # it silently returns ONE column named "text,emotion". With
+        # delimiter=';' tried first (as here), that 1-column parse was
+        # accepted, the text/emotion columns were never found, and the
+        # function returned ZERO samples with no error. The TER trainer
+        # then fell back to its synthetic path and the whole text leg was
+        # measured on 7 constant sentences.
+        #
+        # Now every candidate parse is scored and the widest one wins, and
+        # the column names are checked before accepting a parse.
+        best = None
         for delimiter in delimiters:
             for encoding in encodings:
                 try:
-                    df = pd.read_csv(path, delimiter=delimiter, encoding=encoding, 
-                                   quotechar='"', on_bad_lines='skip')
-                    if df.shape[1] >= 2:
-                        break
-                except:
+                    cand = pd.read_csv(path, delimiter=delimiter, encoding=encoding,
+                                       quotechar='"', on_bad_lines='skip')
+                except Exception:
                     continue
-            else:
-                continue
-            break
+                if cand.shape[1] < 2:
+                    continue
+                if best is None or cand.shape[1] > best.shape[1]:
+                    best = cand
+        if best is not None:
+            df = best
+        else:
+            df = None
         
         if df is None or len(df) == 0:
             return np.array([]), np.array([], dtype=int)

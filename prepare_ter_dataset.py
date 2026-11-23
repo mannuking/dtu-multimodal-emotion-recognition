@@ -74,6 +74,25 @@ def canon(label: str) -> str | None:
     return ALIASES.get(str(label).strip().lower())
 
 
+# EmoryNLP uses its own label names for the same Ekman emotions.
+EMORY_ALIASES = {
+    "joyful": "happy", "happy": "happy",
+    "sad": "sad", "peaceful": "neutral", "neutral": "neutral",
+    "mad": "angry", "angry": "angry",
+    "disgusted": "disgust", "disgust": "disgust",
+    "terrified": "fear", "fear": "fear",
+    "surprised": "surprise", "surprise": "surprise",
+}
+
+
+def canon_emory(label: str) -> str | None:
+    """Map an EmoryNLP label onto the canonical 7-class taxonomy."""
+    key = str(label).strip().lower()
+    if key in EMORY_ALIASES:
+        return EMORY_ALIASES[key]
+    return canon(key)
+
+
 def write_split(rows, path: Path):
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", newline="") as f:
@@ -83,102 +102,144 @@ def write_split(rows, path: Path):
             w.writerow([t, e])
 
 
+DAILYDIALOG_FILES = {
+    "train": "data/train-00000-of-00001-f151c79abb2c1fd5.parquet",
+    "validation": "data/validation-00000-of-00001-2407eb323af19881.parquet",
+    "test": "data/test-00000-of-00001-66dc7d981b70c918.parquet",
+}
+
+# DailyDialog emotion ids: 0=no emotion 1=anger 2=disgust 3=fear
+#                         4=happiness 5=sadness 6=surprise
+DAILYDIALOG_EMOS = ["no emotion", "anger", "disgust", "fear",
+                    "happiness", "sadness", "surprise"]
+
+
 def load_dailydialog():
-    """DailyDialog from HuggingFace parquet. Returns list of (text, canon)."""
+    """
+    DailyDialog from HuggingFace parquet. Returns list of (text, canon).
+
+    Read the parquet DIRECTLY rather than through `datasets`.
+    `load_dataset()` on the script-based mirrors needs a dataset script,
+    which newer `datasets` releases refuse to execute -- and the installed
+    version is pinned to 2.x, so that path is fragile.
+
+    NOTE: DeepPavlov/daily_dialog is DIALOG-level (87170 rows, one label
+    per dialogue) and is useless for utterance-level TER. OpenRL/daily_dialog
+    is the utterance-level mirror: 11118 dialogs, each with a per-utterance
+    `emotion` array aligned to the `dialog` array. Use that one.
+    """
     try:
         import pandas as pd
-        from huggingface_hub import hf_hub_download
     except Exception as e:
-        print(f"  [dailydialog] skipped (import failed: {e})")
+        print(f"  [dailydialog] skipped (no pandas: {e})")
         return []
 
     out = []
-    # The dataset is stored as parquet with list columns (dialog, emotion).
-    # Reading it via `datasets` is the robust path.
-    try:
-        from datasets import load_dataset
-        ds = load_dataset("DeepPavlov/daily_dialog")
-        emo_names = ["no emotion", "anger", "disgust", "fear",
-                     "happiness", "sadness", "surprise"]
-        for split in ds:
-            for row in ds[split]:
-                utts = row.get("dialog") or []
-                emos = row.get("emotion") or []
-                for u, e in zip(utts, emos):
-                    name = emo_names[int(e)] if isinstance(e, int) and int(e) < len(emo_names) else str(e)
-                    c = canon(name)
-                    if c and str(u).strip():
-                        out.append((str(u).strip(), c))
-        return out
-    except Exception as e:
-        print(f"  [dailydialog] `datasets` path failed ({e}); trying parquet directly")
-    try:
-        for split in ("train", "validation", "test"):
-            p = hf_hub_download(repo_id="DeepPavlov/daily_dialog",
-                                filename=f"default/{split}/0000.parquet",
-                                repo_type="dataset")
-            df = pd.read_parquet(p)
-            emo_names = ["no emotion", "anger", "disgust", "fear",
-                         "happiness", "sadness", "surprise"]
-            for _, row in df.iterrows():
+    for split, fname in DAILYDIALOG_FILES.items():
+        url = f"https://huggingface.co/datasets/OpenRL/daily_dialog/resolve/main/{fname}"
+        try:
+            import io
+            import urllib.request
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=180) as resp:
+                blob = resp.read()
+            df = pd.read_parquet(io.BytesIO(blob))
+        except Exception as e:
+            print(f"  [dailydialog] {split} failed: {e}")
+            continue
+
+        if "dialog" not in df.columns or "emotion" not in df.columns:
+            print(f"  [dailydialog] {split} has unexpected columns {list(df.columns)}")
+            continue
+
+        n = 0
+        for _, row in df.iterrows():
+            try:
                 utts = list(row["dialog"])
                 emos = list(row["emotion"])
-                for u, e in zip(utts, emos):
-                    name = emo_names[int(e)] if int(e) < len(emo_names) else str(e)
-                    c = canon(name)
-                    if c and str(u).strip():
-                        out.append((str(u).strip(), c))
-    except Exception as e:
-        print(f"  [dailydialog] parquet path failed: {e}")
+            except Exception:
+                continue
+            if len(utts) != len(emos):
+                continue
+            for u, e in zip(utts, emos):
+                name = DAILYDIALOG_EMOS[int(e)] if 0 <= int(e) < len(DAILYDIALOG_EMOS) else str(e)
+                c = canon(name)
+                if c and str(u).strip():
+                    out.append((str(u).strip(), c))
+                    n += 1
+        print(f"  [dailydialog] {split}: {n} utterances")
     return out
 
 
 def load_meld():
-    """MELD from the declare-lab GitHub repo (train/val/test CSVs)."""
-    import urllib.request
+    """
+    MELD (Friends) from the declare-lab GitHub repo.
+
+    The CSVs live under data/MELD/, NOT at the repo root — the earlier
+    path guessed data/MELD_{split}.csv at the top level and 404'd on all
+    three splits.
+    """
     import csv as _csv
     import io
+    import urllib.request
     out = []
     base = ("https://raw.githubusercontent.com/declare-lab/MELD/master/data/"
-            "MELD_{}.csv")
-    for split in ("train", "dev", "test"):
-        url = base.format(split)
+            "MELD/{f}")
+    for split, fn in (("train", "train_sent_emo.csv"),
+                      ("dev", "dev_sent_emo.csv"),
+                      ("test", "test_sent_emo.csv")):
+        url = base.format(f=fn)
         try:
-            with urllib.request.urlopen(url, timeout=60) as r:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=120) as r:
                 text = r.read().decode("utf-8", errors="replace")
         except Exception as e:
             print(f"  [meld] {split} unavailable: {e}")
             continue
-        rd = _csv.DictReader(io.StringIO(text))
-        for row in rd:
-            u = (row.get("utterance") or "").strip()
-            c = canon(row.get("emotion") or "")
+        n = 0
+        for row in _csv.DictReader(io.StringIO(text)):
+            # The MELD CSVs use CAPITALISED headers: 'Utterance', 'Emotion'.
+            # Looking for 'utterance'/'emotion' matched nothing and the
+            # split silently contributed 0 rows.
+            u = (row.get("Utterance") or row.get("utterance") or "").strip()
+            c = canon(row.get("Emotion") or row.get("emotion") or "")
             if u and c:
                 out.append((u, c))
+                n += 1
+        print(f"  [meld] {split}: {n} utterances")
     return out
 
 
 def load_emorynlp():
-    """EmoryNLP from GitHub."""
-    import urllib.request
+    """EmoryNLP from the declare-lab/MELD repo (data/emorynlp/)."""
     import csv as _csv
     import io
+    import urllib.request
     out = []
-    base = ("https://raw.githubusercontent.com/emorynlp/emotion-detection/master/"
-            "emorynlp/emorynlp_{}.csv")
-    for split in ("train", "dev", "test"):
+    base = ("https://raw.githubusercontent.com/declare-lab/MELD/master/data/"
+            "emorynlp/{f}")
+    for split, fn in (("train", "emorynlp_train_final.csv"),
+                      ("dev", "emorynlp_dev_final.csv"),
+                      ("test", "emorynlp_test_final.csv")):
+        url = base.format(f=fn)
         try:
-            with urllib.request.urlopen(base.format(split), timeout=60) as r:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=120) as r:
                 text = r.read().decode("utf-8", errors="replace")
         except Exception as e:
             print(f"  [emorynlp] {split} unavailable: {e}")
             continue
-        rd = _csv.DictReader(io.StringIO(text))
-        for row in rd:
-            u = (row.get("utterance") or row.get("text") or "").strip()
-            c = canon(row.get("emotion") or "")
+        n = 0
+        for row in _csv.DictReader(io.StringIO(text)):
+            # EmoryNLP headers are 'Utterance'/'Emotion', and its emotion
+            # vocabulary is its own ('Joyful', 'Sad', 'Mad', ...), which
+            # needs mapping onto the canonical 7 classes.
+            u = (row.get("Utterance") or row.get("utterance") or "").strip()
+            c = canon_emory(row.get("Emotion") or row.get("emotion") or "")
             if u and c:
                 out.append((u, c))
+                n += 1
+        print(f"  [emorynlp] {split}: {n} utterances")
     return out
 
 
