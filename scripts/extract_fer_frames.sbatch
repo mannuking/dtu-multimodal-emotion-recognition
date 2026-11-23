@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name=orig-fer-frames
 #SBATCH -N 1
-#SBATCH --ntasks-per-node=4
-#SBATCH --gres=gpu:A100-SXM4:1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=8
 #SBATCH --time=04:00:00
 #SBATCH --output=orig_fer_frames.%j.out
 #SBATCH --error=orig_fer_frames.%j.err
@@ -22,8 +22,11 @@
 # ffmpeg, and rewrites both manifests so face_img points at a real
 # frame.
 #
-# This is CPU + network bound; it asks for a GPU only so it can share
-# the node allocation. It does NOT touch a checkpoint.
+# This is CPU + network bound, so it asks for NO GPU. That matters: the
+# dgxnp queue is backed up (the training job sat in PD for 25 minutes),
+# and a GPU request would put this job BEHIND that queue for no reason.
+# Running it without a GPU lets it start immediately in parallel.
+# It does NOT touch a checkpoint and does NOT touch the project venv.
 # ============================================================
 
 set -euo pipefail
@@ -39,27 +42,54 @@ git pull origin main || echo "  (git pull failed — continuing with local check
 # ---------------- preflight ----------------
 echo ""
 echo "--- PREFLIGHT ---"
-if ! command -v ffmpeg >/dev/null 2>&1; then
-  echo "  ffmpeg not found. Installing a static build..."
-  # conda-forge ffmpeg is the most reliable source on a cluster with conda
-  if command -v conda >/dev/null 2>&1; then
-    conda install -y -c conda-forge ffmpeg || echo "  (conda install failed)"
+FFMPEG_BIN=""
+if command -v ffmpeg >/dev/null 2>&1; then
+  FFMPEG_BIN="$(command -v ffmpeg)"
+  echo "  ffmpeg: system binary at $FFMPEG_BIN"
+else
+  # Fallback 1: imageio-ffmpeg ships a self-contained static ffmpeg. Run it
+  # with --no-project so it lands in a THROWAWAY environment: it cannot
+  # touch the project venv the training job is using.
+  echo "  ffmpeg: not on PATH — trying imageio-ffmpeg (isolated env)..."
+  FFMPEG_BIN="$(uv run --no-project --with imageio-ffmpeg python -c \
+      'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())' 2>/dev/null || true)"
+  if [ -n "$FFMPEG_BIN" ] && [ -x "$FFMPEG_BIN" ]; then
+    echo "  ffmpeg: static binary at $FFMPEG_BIN"
+  else
+    FFMPEG_BIN=""
   fi
 fi
-if ! command -v ffmpeg >/dev/null 2>&1; then
+if [ -z "$FFMPEG_BIN" ]; then
+  # Fallback 2: conda-forge. Last resort because conda writes to a shared
+  # filesystem and can be slow/contended.
+  if command -v conda >/dev/null 2>&1; then
+    echo "  ffmpeg: trying conda-forge..."
+    conda install -y -c conda-forge ffmpeg || echo "  (conda install failed)"
+    if command -v ffmpeg >/dev/null 2>&1; then
+      FFMPEG_BIN="$(command -v ffmpeg)"
+    fi
+  fi
+fi
+if [ -z "$FFMPEG_BIN" ]; then
   echo "  FATAL: ffmpeg is required to decode the .flv clips."
-  echo "         Install it (conda install -c conda-forge ffmpeg) and resubmit."
+  echo "         Tried: system PATH, imageio-ffmpeg, conda-forge."
   exit 1
 fi
-echo "  ffmpeg: $(ffmpeg -version 2>/dev/null | head -1)"
+export FFMPEG_BIN
+echo "  ffmpeg version: $("$FFMPEG_BIN" -version 2>/dev/null | head -1)"
 
-uv run python -u - <<'PYEOF' || { echo "FATAL: environment check failed"; exit 1; }
-import importlib, sys
-for m in ("requests", "PIL", "numpy", "pandas"):
-    try:
-        importlib.import_module(m); print(f"  OK  {m}")
-    except Exception as e:
-        print(f"  --  {m} MISSING"); sys.exit(1)
+# The extractor is PURE STDLIB + the ffmpeg binary. It deliberately does NOT
+# use `uv run`: that would share the project venv with the training job, and
+# a `uv run` sync can prune packages out of that venv mid-training (the
+# exact failure that cost us TensorFlow once already). Use `uv run --no-sync`
+# so the venv is read but never modified.
+uv run --no-sync python -u - <<'PYEOF' || { echo "FATAL: environment check failed"; exit 1; }
+import sys
+assert sys.version_info >= (3, 11), f"need 3.11+, got {sys.version_info}"
+for m in ("urllib.request", "json", "csv", "subprocess", "concurrent.futures"):
+    __import__(m)
+print(f"  OK  python {sys.version.split()[0]} (stdlib only)")
+print("  OK  venv untouched (--no-sync)")
 PYEOF
 
 # ---------------- extraction ----------------
@@ -67,19 +97,19 @@ echo ""
 echo "--- EXTRACTING ---"
 # Smoke test first (4 clips) so a broken network or a missing ffmpeg is
 # caught in seconds rather than after an hour of downloads.
-uv run python -u extract_fer_frames.py --limit 4 --workers 4 || {
+uv run --no-sync python -u extract_fer_frames.py --limit 4 --workers 4 || {
   echo "FATAL: the smoke test failed — not running the full extraction."
   exit 1
 }
 
 echo ""
 echo "--- FULL EXTRACTION ---"
-uv run python -u extract_fer_frames.py --workers 8 2>&1 | tee -a orig_fer_frames.log
+uv run --no-sync python -u extract_fer_frames.py --workers 8 2>&1 | tee -a orig_fer_frames.log
 
 # ---------------- verification ----------------
 echo ""
 echo "--- VERIFICATION ---"
-uv run python -u - <<'PYEOF' || { echo "FATAL: frame verification failed"; exit 1; }
+uv run --no-sync python -u - <<'PYEOF' || { echo "FATAL: frame verification failed"; exit 1; }
 import csv, os, sys
 from collections import Counter
 

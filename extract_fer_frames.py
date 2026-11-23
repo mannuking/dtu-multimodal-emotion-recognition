@@ -44,6 +44,7 @@ import csv
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -153,6 +154,26 @@ def lfs_download(oid: str, size: int) -> bytes | None:
         return None
 
 
+def ffmpeg_binary() -> str:
+    """Resolve the ffmpeg binary.
+
+    The sbatch exports FFMPEG_BIN when the system has no ffmpeg on PATH but
+    imageio-ffmpeg supplied a static binary. Fall back to PATH, then to
+    imageio_ffmpeg's own bundled copy.
+    """
+    env = os.environ.get("FFMPEG_BIN")
+    if env and os.path.exists(env):
+        return env
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        return "ffmpeg"
+
+
 def extract_frames(video_bytes: bytes, sample_id: str) -> list[str]:
     """Decode frames from the video bytes. Returns frame paths."""
     outdir = FRAME_DIR / sample_id
@@ -162,7 +183,7 @@ def extract_frames(video_bytes: bytes, sample_id: str) -> list[str]:
         tmp = tf.name
     try:
         subprocess.run(
-            ["ffmpeg", "-y", "-v", "error", "-i", tmp,
+            [ffmpeg_binary(), "-y", "-v", "error", "-i", tmp,
              "-vf", f"fps={FPS}", "-frames:v", str(MAX_FRAMES),
              "-q:v", "2", str(outdir / "frame_%03d.jpg")],
             check=True, capture_output=True, timeout=120)
@@ -223,10 +244,11 @@ def main():
     print("Extracting the real visual channel from CREMA-D video")
     print("=" * 70)
 
-    if shutil_which := __import__("shutil").which("ffmpeg"):
-        print(f"  ffmpeg: {shutil_which}")
+    ff = ffmpeg_binary()
+    if ff and os.path.exists(ff):
+        print(f"  ffmpeg: {ff}")
     else:
-        print("  FATAL: ffmpeg not found — cannot decode the .flv files")
+        print(f"  FATAL: ffmpeg not found at '{ff}' — cannot decode the .flv files")
         sys.exit(1)
 
     names = list_video_files(args.limit)
