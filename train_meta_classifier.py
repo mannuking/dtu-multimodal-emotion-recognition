@@ -339,6 +339,34 @@ def train_meta_classifier():
     print(f"📊 Triplet data: {df.shape}")
     print(f"   columns: {list(df.columns)}")
 
+    # ---- resolve the REAL visual channel ----
+    # The triplets manifest is rebuilt by the pipeline's Stage 0b with
+    # placeholder face_img values, so it can never carry the real frames.
+    # fer_frames/manifest.csv is written by extract_fer_frames.py and is
+    # joined here on the audio stem instead. The two jobs therefore never
+    # write the same file and cannot corrupt each other.
+    frame_index = {}
+    fm = os.path.join("fer_frames", "manifest.csv")
+    if os.path.exists(fm):
+        fdf = pd.read_csv(fm)
+        for sid, grp in fdf.groupby("sample_id"):
+            paths = [str(x) for x in grp["frame_path"].tolist() if os.path.exists(str(x))]
+            if paths:
+                frame_index[str(sid)] = paths[len(paths) // 2]  # most expressive
+        print(f"   face index: {len(frame_index)} clips with real frames")
+    else:
+        print("   ⚠️  no fer_frames/manifest.csv — the visual channel is empty")
+        print("      Run scripts/extract_fer_frames.sbatch to populate it.")
+
+    if frame_index:
+        stems = df["speech_wav"].astype(str).map(lambda s: os.path.basename(s).rsplit(".", 1)[0])
+        resolved = stems.map(frame_index)
+        n_hit = int(resolved.notna().sum())
+        df["face_img"] = resolved.fillna(df.get("face_img", pd.Series([""] * len(df))))
+        print(f"   visual channel: {n_hit}/{len(df)} triplets resolved to a real face")
+        if n_hit == 0:
+            print("   ⚠️  0 resolved — every triplet will fuse a ZERO vector.")
+
     # Map each row to a synthetic text description (since the manifest has no
     # real text data). Same approach as train_ter_pytorch.py fallback.
     emotion_text = {

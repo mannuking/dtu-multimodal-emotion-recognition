@@ -306,19 +306,22 @@ echo "============================================================"
 # The visual channel may still be empty. That is a reportable state, not
 # a reason to fail — but it MUST be reported, and the meta-classifier now
 # prints the coverage itself.
-if [ -f triplets_manifest.csv ]; then
-  # tail -n +2 drops the header row, so the counts are real data rows.
-  n_rows=$(($(tail -n +2 triplets_manifest.csv | wc -l)))
-  n_real=$(tail -n +2 triplets_manifest.csv | grep -c -v "placeholder" || true)
-  n_real=${n_real:-0}
-  echo "  triplets rows: $n_rows   with a real face_img: $n_real"
+if [ -f fer_frames/manifest.csv ]; then
+  # The visual channel lives in fer_frames/, NOT in the triplets manifest —
+  # Stage 0b rewrites that with placeholders. The meta-classifier joins on
+  # the audio stem, so this is the same source of truth it uses.
+  # tail -n +2 drops the header row; cut -f1 | sort -u counts distinct clips.
+  n_real=$(tail -n +2 fer_frames/manifest.csv | cut -d, -f1 | sort -u | wc -l)
+  n_rows=$(($(tail -n +2 triplets_manifest.csv 2>/dev/null | wc -l)))
+  echo "  visual clips: $n_real   triplets rows: $n_rows"
   if [ "$n_real" -lt $((n_rows / 2)) ]; then
     echo "  ⚠️  visual channel under 50% — the fusion is mostly audio+text."
     echo "     Run scripts/extract_fer_frames.sbatch and re-run this stage"
     echo "     to get a genuine three-modality fusion."
   fi
 else
-  echo "  ⚠️  no triplets manifest — the meta stage will build it."
+  echo "  ⚠️  no fer_frames/manifest.csv — the visual channel is empty."
+  echo "     Run scripts/extract_fer_frames.sbatch, then re-run this stage."
 fi
 uv run python -u train_meta_classifier.py 2>&1 | tee -a orig_meta.log
 

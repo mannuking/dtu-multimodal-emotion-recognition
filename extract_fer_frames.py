@@ -280,59 +280,33 @@ def main():
 
     print(f"\n  clips with frames: {len(results)}/{len(names)}")
 
-    # ---- write the manifest ----
-    with open(OUT_MANIFEST, "w", newline="") as f:
+    # ---- write the manifest ATOMICALLY ----
+    # Write to a temp file then rename, so a reader can never observe a
+    # half-written manifest.
+    tmp = OUT_MANIFEST.with_suffix(".csv.tmp")
+    with open(tmp, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["sample_id", "frame_path", "emotion", "n_frames"])
         for r in sorted(results, key=lambda x: x["sample_id"]):
             for fr in r["frames"]:
                 w.writerow([r["sample_id"], fr, r["emotion"], len(r["frames"])])
-    print(f"  wrote {OUT_MANIFEST}")
+    os.replace(tmp, OUT_MANIFEST)
+    print(f"  wrote {OUT_MANIFEST} (atomic)")
 
-    # ---- attach face_img to the corpus manifest ----
-    corpus = Path("combined_ser_dataset/metadata.csv")
-    if corpus.exists() and results:
-        by_sample = {r["sample_id"]: r for r in results}
-        with open(corpus, newline="") as f:
-            rows = list(csv.DictReader(f))
-            cols = list(rows[0].keys()) if rows else []
-        if "face_img" not in cols:
-            cols.append("face_img")
-        hit = 0
-        for row in rows:
-            stem = Path(row.get("wav_path", "")).stem
-            r = by_sample.get(stem)
-            if r:
-                # point at the MIDDLE frame — the most expressive one
-                mid = r["frames"][len(r["frames"]) // 2]
-                row["face_img"] = mid
-                hit += 1
-            else:
-                row["face_img"] = ""
-        with open(corpus, "w", newline="") as f:
-            w = csv.DictWriter(f, fieldnames=cols)
-            w.writeheader()
-            w.writerows(rows)
-        print(f"  corpus manifest: {hit}/{len(rows)} rows now carry a face_img")
-
-    # ---- rebuild the triplets manifest against the real faces ----
-    triplets = Path("triplets_manifest.csv")
-    if triplets.exists() and results:
-        with open(triplets, newline="") as f:
-            trows = list(csv.DictReader(f))
-        by_stem = {r["sample_id"]: r for r in results}
-        hit = 0
-        for row in trows:
-            stem = Path(row.get("speech_wav", "")).stem
-            r = by_stem.get(stem)
-            if r:
-                row["face_img"] = r["frames"][len(r["frames"]) // 2]
-                hit += 1
-        with open(triplets, "w", newline="") as f:
-            w = csv.DictWriter(f, fieldnames=list(trows[0].keys()))
-            w.writeheader()
-            w.writerows(trows)
-        print(f"  triplets manifest: {hit}/{len(trows)} rows now carry a real face_img")
+    # ---- deliberately do NOT touch the corpus or triplets manifests ----
+    # The pipeline job ALSO writes both of them:
+    #   Stage 0b regenerates triplets_manifest.csv with placeholder faces
+    #   Stage 0c reads combined_ser_dataset/metadata.csv for the SER features
+    # If this job rewrote either one concurrently, the pipeline would read a
+    # half-written CSV (torn read -> corrupted SER features) or the real
+    # faces would be overwritten by Stage 0b moments later.
+    #
+    # So the extractor owns fer_frames/ and NOTHING else. The
+    # meta-classifier resolves faces from fer_frames/manifest.csv at read
+    # time, joining on the audio stem. The two jobs then cannot conflict.
+    print("\n  This job wrote ONLY fer_frames/. The corpus and triplets")
+    print("  manifests were left untouched on purpose — the pipeline job")
+    print("  writes those, and concurrent writes would corrupt them.")
 
     print("\n  The meta-classifier's visual channel is now real.")
 
