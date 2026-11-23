@@ -14,16 +14,27 @@ import json
 from pathlib import Path
 
 
-def load(path):
-    p = Path(path)
-    if not p.exists():
-        return None
-    with open(p) as f:
-        return json.load(f)
+REPO_ROOT = Path(__file__).parent.parent.parent
+
+
+def load(*candidates):
+    """Load the first JSON that exists, searching repo-root-relative paths.
+
+    Accepts several names because the eval scripts were run with different
+    --out values at different times; also resolves relative to the repo root
+    so the script works from any CWD.
+    """
+    for cand in candidates:
+        for base in (REPO_ROOT, Path.cwd()):
+            p = (base / cand) if not Path(cand).is_absolute() else Path(cand)
+            if p.exists():
+                with open(p) as f:
+                    return json.load(f)
+    return None
 
 
 def main():
-    v9b = load("reports/v9b_table1_results.json")
+    v9b = load("reports/v9b_table1_results.json", "reports/v9b_table1.json")
     v10 = load("reports/v10_table1_results.json")
     if v10 is None:
         print("ERROR: reports/v10_table1_results.json missing — run eval first.")

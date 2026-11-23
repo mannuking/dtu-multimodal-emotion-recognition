@@ -126,10 +126,21 @@ def main():
 
     # Append v9b legs (reuse from existing reports if available)
     # Resolve v9b JSON from repo root (sbatch cwd != repo root)
-    v9b_path = Path(__file__).parent.parent.parent / "reports" / "v9b_table1_results.json"
-    if v9b_path.exists():
-        with open(v9b_path) as f:
-            out["v9b"] = json.load(f)
+    v9b_dir = Path(__file__).parent.parent.parent / "reports"
+    # The v9b eval sbatch writes reports/v9b_table1.json; an earlier hand-run
+    # wrote reports/v9b_table1_results.json. Accept either so the comparison
+    # rows are populated regardless of which one is on disk.
+    v9b_loaded = False
+    for cand in ("v9b_table1_results.json", "v9b_table1.json"):
+        v9b_path = v9b_dir / cand
+        if v9b_path.exists():
+            with open(v9b_path) as f:
+                out["v9b"] = json.load(f)
+            print(f"  [v10] loaded v9b reference from {cand}")
+            v9b_loaded = True
+            break
+    if not v9b_loaded:
+        print("  [v10] WARNING: no v9b table-1 JSON found; v9b comparison rows will be empty.")
 
     out_path = Path(args.out)
     out_path.parent.mkdir(exist_ok=True)
